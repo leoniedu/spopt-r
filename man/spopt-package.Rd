@@ -13,8 +13,8 @@ Spatial optimization algorithms for regionalization, facility location, and mark
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/kylewalker/spopt-r}
-  \item Report bugs at \url{https://github.com/kylewalker/spopt-r/issues}
+  \item \url{https://github.com/walkerke/spopt-r}
+  \item Report bugs at \url{https://github.com/walkerke/spopt-r/issues}
 }
 
 }

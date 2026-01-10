@@ -319,6 +319,7 @@ fn rust_max_p(
     centroids_y: Nullable<Vec<f64>>,
     compact: bool,
     compact_weight: f64,
+    homogeneous: bool
 ) -> List {
     region::maxp::solve(
         attrs,
@@ -335,6 +336,7 @@ fn rust_max_p(
         centroids_y.into_option(),
         compact,
         compact_weight,
+        homogeneous
     )
 }
 

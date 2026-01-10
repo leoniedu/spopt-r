@@ -132,9 +132,10 @@ rust_ward_constrained <- function(attrs, n_regions, adj_i, adj_j) .Call(wrap__ru
 #' @param centroids_y Y coordinates of unit centroids (for compactness)
 #' @param compact Whether to optimize for compactness
 #' @param compact_weight Weight for compactness vs dissimilarity (0-1)
+#' @param homogeneous Whether to minimize dissimilarity within regions
 #' @return List with labels (1-based), n_regions, objective, and compactness
 #' @export
-rust_max_p <- function(attrs, threshold_var, threshold, adj_i, adj_j, n_iterations, n_sa_iterations, cooling_rate, tabu_length, seed, centroids_x, centroids_y, compact, compact_weight) .Call(wrap__rust_max_p, attrs, threshold_var, threshold, adj_i, adj_j, n_iterations, n_sa_iterations, cooling_rate, tabu_length, seed, centroids_x, centroids_y, compact, compact_weight)
+rust_max_p <- function(attrs, threshold_var, threshold, adj_i, adj_j, n_iterations, n_sa_iterations, cooling_rate, tabu_length, seed, centroids_x, centroids_y, compact, compact_weight, homogeneous) .Call(wrap__rust_max_p, attrs, threshold_var, threshold, adj_i, adj_j, n_iterations, n_sa_iterations, cooling_rate, tabu_length, seed, centroids_x, centroids_y, compact, compact_weight, homogeneous)
 
 #' Solve P-Median facility location problem
 #'

@@ -18,7 +18,8 @@ rust_max_p(
   centroids_x,
   centroids_y,
   compact,
-  compact_weight
+  compact_weight,
+  homogeneous
 )
 }
 \arguments{
@@ -49,6 +50,8 @@ rust_max_p(
 \item{compact}{Whether to optimize for compactness}
 
 \item{compact_weight}{Weight for compactness vs dissimilarity (0-1)}
+
+\item{homogeneous}{Whether to minimize dissimilarity within regions}
 }
 \value{
 List with labels (1-based), n_regions, objective, and compactness

@@ -13,6 +13,7 @@ max_p_regions(
   bridge_islands = FALSE,
   compact = FALSE,
   compact_weight = 0.5,
+  homogeneous = TRUE,
   n_iterations = 100L,
   n_sa_iterations = 100L,
   cooling_rate = 0.99,
@@ -62,6 +63,10 @@ Default is FALSE.}
 \item{compact_weight}{Numeric between 0 and 1. Weight for compactness vs
 attribute homogeneity when \code{compact = TRUE}. Higher values prioritize
 compact shapes over attribute similarity. Default is 0.5.}
+
+\item{homogeneous}{Logical. If TRUE, minimizes within-region dissimilarity,
+so that regions are internally homogeneous. If FALSE, maximizes within-region
+dissimilarity.}
 
 \item{n_iterations}{Integer. Number of construction phase iterations (default 100).
 Higher values explore more random starting solutions.}

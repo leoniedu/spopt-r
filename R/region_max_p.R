@@ -37,6 +37,9 @@
 #' @param compact_weight Numeric between 0 and 1. Weight for compactness vs
 #'   attribute homogeneity when `compact = TRUE`. Higher values prioritize
 #'   compact shapes over attribute similarity. Default is 0.5.
+#' @param homogeneous Logical. If TRUE, minimizes within-region dissimilarity,
+#'   so that regions are internally homogeneous. If FALSE, maximizes within-region
+#'   dissimilarity.
 #' @param n_iterations Integer. Number of construction phase iterations (default 100).
 #'   Higher values explore more random starting solutions.
 #' @param n_sa_iterations Integer. Number of simulated annealing iterations (default 100).
@@ -183,6 +186,7 @@ max_p_regions <- function(data,
                           bridge_islands = FALSE,
                           compact = FALSE,
                           compact_weight = 0.5,
+                          homogeneous = TRUE,
                           n_iterations = 100L,
                           n_sa_iterations = 100L,
                           cooling_rate = 0.99,
@@ -252,6 +256,9 @@ max_p_regions <- function(data,
   if (!is.numeric(compact_weight) || compact_weight < 0 || compact_weight > 1) {
     stop("`compact_weight` must be between 0 and 1", call. = FALSE)
   }
+  if (!is.logical(homogeneous) || length(homogeneous) != 1) {
+    stop("`homogeneous` must be TRUE or FALSE", call. = FALSE)
+  }
   if (!is.logical(bridge_islands) || length(bridge_islands) != 1) {
     stop("`bridge_islands` must be TRUE or FALSE", call. = FALSE)
   }
@@ -308,7 +315,8 @@ max_p_regions <- function(data,
     centroids_x = centroids_x,
     centroids_y = centroids_y,
     compact = compact,
-    compact_weight = as.numeric(compact_weight)
+    compact_weight = as.numeric(compact_weight),
+    homogeneous = homogeneous
   )
 
   end_time <- Sys.time()
@@ -353,6 +361,7 @@ max_p_regions <- function(data,
     n_sa_iterations = n_sa_iterations,
     compact = compact,
     compact_weight = compact_weight,
+    homogeneous = homogeneous,
     mean_compactness = if (!is.null(compactness_metrics)) compactness_metrics$mean else NULL,
     region_compactness = if (!is.null(compactness_metrics)) compactness_metrics$by_region else NULL
   )

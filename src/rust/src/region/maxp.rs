@@ -139,6 +139,7 @@ pub fn solve(
     centroids_y: Option<Vec<f64>>,
     compact: bool,
     compact_weight: f64,
+    homogeneous: bool
 ) -> List {
     let n = attrs.nrows();
     let n_attrs = attrs.ncols();
@@ -272,6 +273,7 @@ pub fn solve(
             use_compactness,
             centroids_ref,
             compact_weight,
+            homogeneous
         );
     }
 
@@ -635,6 +637,7 @@ fn simulated_annealing(
     use_compactness: bool,
     centroids: Option<&Centroids>,
     compact_weight: f64,
+    homogeneous: bool
 ) -> RegionState {
     let n = state.labels.len();
     let mut rng = ChaCha8Rng::seed_from_u64(seed.unwrap_or(12345));
@@ -657,7 +660,7 @@ fn simulated_annealing(
         0.0
     };
 
-    // Combined objective: minimize dissimilarity, maximize compactness
+    // Combined objective: minimize dissimilarity (or maximize if `heterogeneous = false`), maximize compactness
     // We negate compactness since we're minimizing
     let mut current_objective = (1.0 - compact_weight) * dissimilarity_obj - compact_weight * compactness_obj * 100.0;
     let mut best_state = state.clone();
@@ -710,8 +713,10 @@ fn simulated_annealing(
             0.0
         };
 
-        // Combined delta: minimize dissimilarity, maximize compactness
-        let delta = (1.0 - compact_weight) * dissim_delta - compact_weight * compact_delta * 100.0;
+        // Combined delta: minimize dissimilarity (or maximize if `homogeneous  = true`),
+        //                 maximize compactness
+        let dissim_sign = if homogeneous { 1.0 } else { -1.0 };
+        let delta = (1.0 - compact_weight) * dissim_sign * dissim_delta - compact_weight * compact_delta * 100.0;
 
         if tabu_list.contains(&reverse_tuple) {
             // Skip tabu move unless it's aspiration (would be best ever)
