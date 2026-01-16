@@ -5,7 +5,7 @@ The **spopt** R package provides R-native implementations of spatial optimizatio
 Install from r-universe:
 
 ```r
-install.packages("spopt", repos = "https://walkerke.r-universe.dev")
+install.packages('spopt', repos = c('https://walkerke.r-universe.dev', 'https://cloud.r-project.org'))
 ```
 
 For developers who need to build from source (requires Rust), see [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -17,7 +17,7 @@ The easiest way to install spopt is from my r-universe repository, which provide
 
 ```{r}
 #| eval: false
-install.packages("spopt", repos = "https://walkerke.r-universe.dev")
+install.packages('spopt', repos = c('https://walkerke.r-universe.dev', 'https://cloud.r-project.org'))
 ```
 
 Once installed, load the package along with sf for spatial data handling and tidyverse for data manipulation:
