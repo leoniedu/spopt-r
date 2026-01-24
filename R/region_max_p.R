@@ -37,6 +37,8 @@
 #' @param compact_weight Numeric between 0 and 1. Weight for compactness vs
 #'   attribute homogeneity when `compact = TRUE`. Higher values prioritize
 #'   compact shapes over attribute similarity. Default is 0.5.
+#' @param compact_metric Either "centroid dispersion" (the default) or "NMI",
+#'   the Normalized Moment of Inertia.
 #' @param homogeneous Logical. If TRUE, minimizes within-region dissimilarity,
 #'   so that regions are internally homogeneous. If FALSE, maximizes within-region
 #'   dissimilarity.
@@ -90,9 +92,10 @@
 #'   \item Often result in finding MORE regions due to efficient space usage
 #' }
 #'
-#' \strong{Compactness metric}: This implementation uses a centroid dispersion
-#' measure during optimization, rather than the Normalized Moment of Inertia (NMI)
-#' described in Feng et al. (2022). This design choice provides two advantages:
+#' \strong{Compactness metric}: This implementation provides two options
+#' for the compactness metric used during optimization. The Normalized Moment of Inertia
+#' (NMI) described in Feng et al. (2022) can be used. However, the default option
+#' is a dispersion measure. The dispersion measure has two advantages:
 #' \enumerate{
 #'   \item \strong{Point-based regionalization}: The algorithm works with both
 #'     polygon and point geometries. For point data, use KNN or distance-based
@@ -186,6 +189,7 @@ max_p_regions <- function(data,
                           bridge_islands = FALSE,
                           compact = FALSE,
                           compact_weight = 0.5,
+                          compact_metric = "centroid dispersion",
                           homogeneous = TRUE,
                           n_iterations = 100L,
                           n_sa_iterations = 100L,
@@ -263,15 +267,31 @@ max_p_regions <- function(data,
     stop("`bridge_islands` must be TRUE or FALSE", call. = FALSE)
   }
 
-  # Extract centroids if compactness is enabled
+  # Extract centroids and other data if compactness is enabled
   centroids_x <- NULL
   centroids_y <- NULL
+  areas <- NULL
+  second_areal_moments <- NULL
+
   if (compact) {
-    # Get centroids of all units
-    cents <- sf::st_centroid(sf::st_geometry(data))
+    geoms <- sf::st_geometry(data)
+
+    if ((toupper(compact_metric) == "NMI") && !is.na(sf::st_crs(geoms)) && sf::st_is_longlat(geoms)) {
+      warning("Coordinates are geodetic and will be projected.")
+      geoms <- .auto_project(geoms)
+    }
+
+    # Get centroids of all units (needed for both metrics)
+    cents <- sf::st_centroid(geoms)
     coords <- sf::st_coordinates(cents)
     centroids_x <- as.numeric(coords[, 1])
     centroids_y <- as.numeric(coords[, 2])
+    
+    # Get areas and moments if using NMI metric
+    if (toupper(compact_metric) == "NMI") {
+      areas <- geoms |> sf::st_area() |> as.numeric()
+      second_areal_moments <- second_areal_moment(geoms)
+    }
   }
 
   # Extract attributes for dissimilarity
@@ -312,11 +332,14 @@ max_p_regions <- function(data,
     cooling_rate = as.numeric(cooling_rate),
     tabu_length = as.integer(tabu_length),
     seed = if (!is.null(seed)) as.integer(seed) else NULL,
-    centroids_x = centroids_x,
-    centroids_y = centroids_y,
+    homogeneous = homogeneous,
     compact = compact,
     compact_weight = as.numeric(compact_weight),
-    homogeneous = homogeneous
+    compact_metric = compact_metric,
+    centroids_x = centroids_x,
+    centroids_y = centroids_y,
+    areas = areas,
+    moments = second_areal_moments
   )
 
   end_time <- Sys.time()

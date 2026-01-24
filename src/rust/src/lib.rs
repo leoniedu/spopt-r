@@ -297,10 +297,13 @@ fn rust_azp(
 /// @param cooling_rate SA cooling rate (e.g., 0.99)
 /// @param tabu_length Tabu list length for SA
 /// @param seed Random seed
-/// @param centroids_x X coordinates of unit centroids (for compactness)
-/// @param centroids_y Y coordinates of unit centroids (for compactness)
 /// @param compact Whether to optimize for compactness
 /// @param compact_weight Weight for compactness vs dissimilarity (0-1)
+/// @param compact_metric Compactness metric to use, either "centroid dispersion" or "nmi" (normalized moment of inertia)
+/// @param centroids_x X coordinates of unit centroids (for compactness)
+/// @param centroids_y Y coordinates of unit centroids (for compactness)
+/// @param areas Areas of units (for compactness)
+/// @param moments Second areal moments of units (for compactness)
 /// @return List with labels (1-based), n_regions, objective, and compactness
 /// @export
 #[extendr]
@@ -315,12 +318,27 @@ fn rust_max_p(
     cooling_rate: f64,
     tabu_length: i32,
     seed: Nullable<i64>,
-    centroids_x: Nullable<Vec<f64>>,
-    centroids_y: Nullable<Vec<f64>>,
+    homogeneous: bool,
     compact: bool,
     compact_weight: f64,
-    homogeneous: bool
+    compact_metric: &str,
+    centroids_x: Nullable<Vec<f64>>,
+    centroids_y: Nullable<Vec<f64>>,
+    areas: Nullable<Vec<f64>>,
+    moments: Nullable<Vec<f64>>
 ) -> List {
+
+    // Parse compact_metric string to enum
+    let metric = match compact_metric.to_lowercase().as_str() {
+        "nmi" => region::maxp::CompactnessMetric::NMI,
+        "centroid dispersion" | "centroid-dispersion" | "centroid_dispersion" => {
+            region::maxp::CompactnessMetric::CentroidDispersion
+        }
+        _ => {
+            panic!("Invalid `compact_metric`: '{}'. Must be 'nmi' or 'centroid dispersion'", compact_metric);
+        }
+    };
+
     region::maxp::solve(
         attrs,
         &threshold_var,
@@ -336,7 +354,10 @@ fn rust_max_p(
         centroids_y.into_option(),
         compact,
         compact_weight,
-        homogeneous
+        homogeneous,
+        metric,
+        areas.into_option(),
+        moments.into_option()
     )
 }
 

@@ -13,6 +13,7 @@ max_p_regions(
   bridge_islands = FALSE,
   compact = FALSE,
   compact_weight = 0.5,
+  compact_metric = "centroid dispersion",
   homogeneous = TRUE,
   n_iterations = 100L,
   n_sa_iterations = 100L,
@@ -63,6 +64,9 @@ Default is FALSE.}
 \item{compact_weight}{Numeric between 0 and 1. Weight for compactness vs
 attribute homogeneity when \code{compact = TRUE}. Higher values prioritize
 compact shapes over attribute similarity. Default is 0.5.}
+
+\item{compact_metric}{Either "centroid dispersion" (the default) or "NMI",
+the Normalized Moment of Inertia.}
 
 \item{homogeneous}{Logical. If TRUE, minimizes within-region dissimilarity,
 so that regions are internally homogeneous. If FALSE, maximizes within-region
@@ -132,9 +136,10 @@ shapes based on Feng, Rey, & Wei (2022). Compact regions:
 \item Often result in finding MORE regions due to efficient space usage
 }
 
-\strong{Compactness metric}: This implementation uses a centroid dispersion
-measure during optimization, rather than the Normalized Moment of Inertia (NMI)
-described in Feng et al. (2022). This design choice provides two advantages:
+\strong{Compactness metric}: This implementation provides two options
+for the compactness metric used during optimization. The Normalized Moment of Inertia
+(NMI) described in Feng et al. (2022) can be used. However, the default option
+is a dispersion measure. The dispersion measure has two advantages:
 \enumerate{
 \item \strong{Point-based regionalization}: The algorithm works with both
 polygon and point geometries. For point data, use KNN or distance-based

@@ -10,7 +10,7 @@
 //! - Articulation point detection for move eligibility
 //! - Incremental threshold tracking
 //! - Early termination when max_p stabilizes
-//! - Optional compactness optimization using centroid dispersion
+//! - Optional compactness optimization using either NMI or centroid dispersion
 
 use extendr_api::prelude::*;
 use rand::prelude::*;
@@ -19,6 +19,13 @@ use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Compactness metric to use for region evaluation
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CompactnessMetric {
+    CentroidDispersion,
+    NMI,
+}
 
 /// Centroid coordinates for compactness calculation
 #[derive(Clone)]
@@ -139,7 +146,10 @@ pub fn solve(
     centroids_y: Option<Vec<f64>>,
     compact: bool,
     compact_weight: f64,
-    homogeneous: bool
+    homogeneous: bool,
+    metric: CompactnessMetric,
+    areas: Option<Vec<f64>>,
+    moments: Option<Vec<f64>>
 ) -> List {
     let n = attrs.nrows();
     let n_attrs = attrs.ncols();
@@ -175,6 +185,8 @@ pub fn solve(
     let centroids = Centroids::new(centroids_x, centroids_y);
     let use_compactness = compact && centroids.is_some();
     let centroids_ref = centroids.as_ref();
+    let areas_ref = areas.as_deref();
+    let moments_ref = moments.as_deref();
 
     // Precompute pairwise Manhattan distances for objective calculation
     // Only compute for neighbors to save memory
@@ -221,6 +233,9 @@ pub fn solve(
                     &mut rng,
                     use_compactness,
                     centroids_clone.as_ref(),
+                    metric,
+                    areas_ref,
+                    moments_ref,
                 );
 
                 if state.n_regions > worker_best_p {
@@ -273,16 +288,25 @@ pub fn solve(
             use_compactness,
             centroids_ref,
             compact_weight,
-            homogeneous
+            homogeneous,
+            metric,
+            areas_ref,
+            moments_ref,
         );
     }
 
     // Compute final objective (total within-region dissimilarity)
     let objective = compute_objective(&attr_vecs, &state);
 
-    // Compute compactness metrics (centroid dispersion per region)
+    // Compute compactness metrics
     let region_compactness: Vec<f64> = if let Some(ref cents) = centroids {
-        compute_all_region_compactness(&state, cents)
+        compute_all_region_compactness(
+            &state, 
+            cents,
+            metric,
+            areas_ref,
+            moments_ref
+        )
     } else {
         vec![0.0; state.n_regions]
     };
@@ -313,6 +337,9 @@ fn construct_solution(
     rng: &mut ChaCha8Rng,
     use_compactness: bool,
     centroids: Option<&Centroids>,
+    metric: CompactnessMetric,
+    areas: Option<&[f64]>,
+    moments: Option<&[f64]>,
 ) -> RegionState {
     let mut state = RegionState::new(n);
 
@@ -331,7 +358,7 @@ fn construct_solution(
 
         // Grow region until threshold is met
         grow_region(&mut state, region_id, threshold_var, threshold, adj, rng,
-                    use_compactness, centroids);
+                    use_compactness, centroids, metric, areas, moments);
 
         // If region doesn't meet threshold, dissolve it back to enclaves
         if !state.region_meets_threshold(region_id, threshold) {
@@ -363,6 +390,9 @@ fn grow_region(
     rng: &mut ChaCha8Rng,
     use_compactness: bool,
     centroids: Option<&Centroids>,
+    metric: CompactnessMetric,
+    areas: Option<&[f64]>,
+    moments: Option<&[f64]>,
 ) {
     // Use BFS-like expansion with randomization
     let mut frontier: Vec<usize> = Vec::new();
@@ -386,7 +416,15 @@ fn grow_region(
             let mut scored: Vec<(usize, f64)> = frontier.iter()
                 .filter(|&&c| state.labels[c] < 0)
                 .map(|&c| {
-                    let score = compute_region_compactness_if_added(state, region_id, c, cents);
+                    let score = compute_region_compactness_if_added(
+                        state, 
+                        region_id, 
+                        c, 
+                        cents,
+                        metric,
+                        areas,
+                        moments
+                    );
                     (c, score)
                 })
                 .collect();
@@ -637,7 +675,10 @@ fn simulated_annealing(
     use_compactness: bool,
     centroids: Option<&Centroids>,
     compact_weight: f64,
-    homogeneous: bool
+    homogeneous: bool,
+    metric: CompactnessMetric,
+    areas: Option<&[f64]>,
+    moments: Option<&[f64]>,
 ) -> RegionState {
     let n = state.labels.len();
     let mut rng = ChaCha8Rng::seed_from_u64(seed.unwrap_or(12345));
@@ -654,7 +695,13 @@ fn simulated_annealing(
     // Compute initial combined objective
     let dissimilarity_obj = compute_objective(attrs, &state);
     let compactness_obj = if use_compactness && centroids.is_some() {
-        let comps = compute_all_region_compactness(&state, centroids.unwrap());
+        let comps = compute_all_region_compactness(
+            &state, 
+            centroids.unwrap(),
+            metric,
+            areas,
+            moments
+        );
         comps.iter().sum::<f64>() / comps.len().max(1) as f64
     } else {
         0.0
@@ -695,8 +742,20 @@ fn simulated_annealing(
         // Compute compactness change if enabled
         let compact_delta = if use_compactness && centroids.is_some() {
             let cents = centroids.unwrap();
-            let old_from = compute_region_compactness(&state.region_members[from_region], cents);
-            let old_to = compute_region_compactness(&state.region_members[to_region], cents);
+            let old_from = compute_region_compactness(
+                &state.region_members[from_region], 
+                cents,
+                metric,
+                areas,
+                moments
+            );
+            let old_to = compute_region_compactness(
+                &state.region_members[to_region], 
+                cents,
+                metric,
+                areas,
+                moments
+            );
 
             // Simulate move
             let new_from: Vec<usize> = state.region_members[from_region].iter()
@@ -704,8 +763,20 @@ fn simulated_annealing(
             let mut new_to = state.region_members[to_region].clone();
             new_to.push(area);
 
-            let new_from_comp = compute_region_compactness(&new_from, cents);
-            let new_to_comp = compute_region_compactness(&new_to, cents);
+            let new_from_comp = compute_region_compactness(
+                &new_from, 
+                cents,
+                metric,
+                areas,
+                moments
+            );
+            let new_to_comp = compute_region_compactness(
+                &new_to, 
+                cents,
+                metric,
+                areas,
+                moments
+            );
 
             // Return change (positive = improved compactness)
             (new_from_comp + new_to_comp) - (old_from + old_to)
@@ -938,7 +1009,7 @@ fn compute_region_ssd(attrs: &[Vec<f64>], members: &[usize]) -> f64 {
 ///
 /// Returns a value between 0 and 1, where 1 is most compact (all units at same location)
 /// Uses the formula: C = 1 / (1 + sqrt(mean_squared_distance_to_centroid))
-fn compute_region_compactness(members: &[usize], centroids: &Centroids) -> f64 {
+fn compute_region_centroid_dispersion(members: &[usize], centroids: &Centroids) -> f64 {
     if members.len() <= 1 {
         return 1.0; // Single unit is maximally compact
     }
@@ -968,8 +1039,92 @@ fn compute_region_compactness(members: &[usize], centroids: &Centroids) -> f64 {
     1.0 / (1.0 + mean_sq_dist.sqrt())
 }
 
-/// Compute compactness if a new member were added to a region
-fn compute_region_compactness_if_added(
+/// Compute compactness for a region using normalized moment of inertia (NMI)
+/// 
+/// Returns a value between 0 and 1, where 1 is most compact
+/// Uses the formula C = (area^2) / (2 * pi * I) where I is the second areal moment
+fn compute_region_nmi(
+    members: &[usize],
+    areas: &[f64],
+    moments: &[f64],
+    centroids: &Centroids,
+) -> f64 {
+    let n = members.len();
+    
+    // Validate inputs
+    if n == 0 {
+        return 0.0;
+    }
+    
+    // Calculate the combined centroid as area-weighted average
+    let mut total_area = 0.0;
+    let mut combined_x = 0.0;
+    let mut combined_y = 0.0;
+    
+    for &m in members {
+        total_area += areas[m];
+        combined_x += areas[m] * centroids.x[m];
+        combined_y += areas[m] * centroids.y[m];
+    }
+    
+    if total_area <= 0.0 {
+        return 0.0;
+    }
+    
+    combined_x /= total_area;
+    combined_y /= total_area;
+    
+    // Calculate distance from each centroid to combined centroid
+    // and apply parallel axis theorem: I_combined = sum(I_i + A_i * d_i^2)
+    let mut combined_moment = 0.0;
+    
+    for &m in members {
+        let dx = centroids.x[m] - combined_x;
+        let dy = centroids.y[m] - combined_y;
+        let distance_squared = dx * dx + dy * dy;
+        
+        combined_moment += moments[m] + areas[m] * distance_squared;
+    }
+    
+    // Calculate total area for members
+    let total_area: f64 = members.iter().map(|&m| areas[m]).sum();
+    
+    if combined_moment <= 0.0 {
+        return 0.0;
+    }
+    
+    let pi = std::f64::consts::PI;
+    (total_area * total_area) / (2.0 * pi * combined_moment)
+}
+
+/// Compute compactness for a region using a specified metric
+///
+/// Returns a value between 0 and 1, where 1 is most compact (all units at same location)
+/// Uses the formula: C = 1 / (1 + sqrt(mean_squared_distance_to_centroid))
+fn compute_region_compactness(
+    members: &[usize],
+    centroids: &Centroids,
+    metric: CompactnessMetric,
+    areas: Option<&[f64]>,
+    moments: Option<&[f64]>,
+) -> f64 {
+    match metric {
+        CompactnessMetric::CentroidDispersion => {
+            compute_region_centroid_dispersion(members, centroids)
+        }
+        CompactnessMetric::NMI => {
+            match (areas, moments) {
+                (Some(a), Some(m)) => compute_region_nmi(members, a, m, centroids),
+                _ => {
+                    panic!("NMI compactness metric requires both areas and moments to be provided");
+                }
+            }
+        }
+    }
+}
+
+/// Compute region centroid dispersion if a new member were added to a region
+fn compute_region_centroid_dispersion_if_added(
     state: &RegionState,
     region_id: usize,
     new_member: usize,
@@ -1006,10 +1161,62 @@ fn compute_region_compactness_if_added(
     1.0 / (1.0 + mean_sq_dist.sqrt())
 }
 
+/// Compute NMI if a new member were added to a region
+fn compute_region_nmi_if_added(
+    state: &RegionState,
+    region_id: usize,
+    new_member: usize,
+    areas: &[f64],
+    moments: &[f64],
+    centroids: &Centroids,
+) -> f64 {
+    let members = &state.region_members[region_id];
+
+    // Create temporary member list with new member
+    let mut temp_members = members.clone();
+    temp_members.push(new_member);
+
+    // Compute NMI for the temporary region
+    compute_region_nmi(&temp_members, areas, moments, centroids)
+}
+
+/// Compute compactness if a new member were added to a region
+fn compute_region_compactness_if_added(
+    state: &RegionState,
+    region_id: usize,
+    new_member: usize,
+    centroids: &Centroids,
+    metric: CompactnessMetric,
+    areas: Option<&[f64]>,
+    moments: Option<&[f64]>,
+) -> f64 {
+    match metric {
+        CompactnessMetric::CentroidDispersion => {
+            compute_region_centroid_dispersion_if_added(state, region_id, new_member, centroids)
+        }
+        CompactnessMetric::NMI => {
+            match (areas, moments) {
+                (Some(a), Some(m)) => {
+                    compute_region_nmi_if_added(state, region_id, new_member, a, m, centroids)
+                }
+                _ => {
+                    panic!("NMI compactness metric requires both areas and moments to be provided");
+                }
+            }
+        }
+    }
+}
+
 /// Compute compactness for all regions
-fn compute_all_region_compactness(state: &RegionState, centroids: &Centroids) -> Vec<f64> {
+fn compute_all_region_compactness(
+    state: &RegionState,
+    centroids: &Centroids,
+    metric: CompactnessMetric,
+    areas: Option<&[f64]>,
+    moments: Option<&[f64]>
+) -> Vec<f64> {
     state.region_members
         .iter()
-        .map(|members| compute_region_compactness(members, centroids))
+        .map(|members| compute_region_compactness(members, centroids, metric, areas, moments))
         .collect()
 }
