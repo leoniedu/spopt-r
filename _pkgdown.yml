@@ -68,6 +68,8 @@ reference:
   contents:
   - sp_weights
   - distance_matrix
+  - second_areal_moment
+  - nmi
 
 - title: Data
   desc: Example datasets
