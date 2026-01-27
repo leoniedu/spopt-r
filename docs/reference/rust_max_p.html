@@ -61,10 +61,14 @@ threshold constraint on a spatial extensive attribute.</p>
 <span>  <span class="va">cooling_rate</span>,</span>
 <span>  <span class="va">tabu_length</span>,</span>
 <span>  <span class="va">seed</span>,</span>
+<span>  <span class="va">homogeneous</span>,</span>
+<span>  <span class="va">compact</span>,</span>
+<span>  <span class="va">compact_weight</span>,</span>
+<span>  <span class="va">compact_metric</span>,</span>
 <span>  <span class="va">centroids_x</span>,</span>
 <span>  <span class="va">centroids_y</span>,</span>
-<span>  <span class="va">compact</span>,</span>
-<span>  <span class="va">compact_weight</span></span>
+<span>  <span class="va">areas</span>,</span>
+<span>  <span class="va">moments</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -112,12 +116,8 @@ threshold constraint on a spatial extensive attribute.</p>
 <dd><p>Random seed</p></dd>
 
 
-<dt id="arg-centroids-x">centroids_x<a class="anchor" aria-label="anchor" href="#arg-centroids-x"></a></dt>
-<dd><p>X coordinates of unit centroids (for compactness)</p></dd>
-
-
-<dt id="arg-centroids-y">centroids_y<a class="anchor" aria-label="anchor" href="#arg-centroids-y"></a></dt>
-<dd><p>Y coordinates of unit centroids (for compactness)</p></dd>
+<dt id="arg-homogeneous">homogeneous<a class="anchor" aria-label="anchor" href="#arg-homogeneous"></a></dt>
+<dd><p>Whether to maximize homogeneity (the default), or heterogeneity (if set to FALSE).</p></dd>
 
 
 <dt id="arg-compact">compact<a class="anchor" aria-label="anchor" href="#arg-compact"></a></dt>
@@ -126,6 +126,26 @@ threshold constraint on a spatial extensive attribute.</p>
 
 <dt id="arg-compact-weight">compact_weight<a class="anchor" aria-label="anchor" href="#arg-compact-weight"></a></dt>
 <dd><p>Weight for compactness vs dissimilarity (0-1)</p></dd>
+
+
+<dt id="arg-compact-metric">compact_metric<a class="anchor" aria-label="anchor" href="#arg-compact-metric"></a></dt>
+<dd><p>Compactness metric to use, either "centroid dispersion" or "nmi" (normalized moment of inertia)</p></dd>
+
+
+<dt id="arg-centroids-x">centroids_x<a class="anchor" aria-label="anchor" href="#arg-centroids-x"></a></dt>
+<dd><p>X coordinates of unit centroids (for compactness)</p></dd>
+
+
+<dt id="arg-centroids-y">centroids_y<a class="anchor" aria-label="anchor" href="#arg-centroids-y"></a></dt>
+<dd><p>Y coordinates of unit centroids (for compactness)</p></dd>
+
+
+<dt id="arg-areas">areas<a class="anchor" aria-label="anchor" href="#arg-areas"></a></dt>
+<dd><p>Areas of units (for compactness)</p></dd>
+
+
+<dt id="arg-moments">moments<a class="anchor" aria-label="anchor" href="#arg-moments"></a></dt>
+<dd><p>Second areal moments of units (for compactness)</p></dd>
 
 </dl></div>
     <div class="section level2">

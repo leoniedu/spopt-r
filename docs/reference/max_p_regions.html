@@ -65,6 +65,8 @@ population or sample size requirements.</p>
 <span>  bridge_islands <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  compact <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  compact_weight <span class="op">=</span> <span class="fl">0.5</span>,</span>
+<span>  compact_metric <span class="op">=</span> <span class="st">"centroid dispersion"</span>,</span>
+<span>  homogeneous <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  n_iterations <span class="op">=</span> <span class="fl">100L</span>,</span>
 <span>  n_sa_iterations <span class="op">=</span> <span class="fl">100L</span>,</span>
 <span>  cooling_rate <span class="op">=</span> <span class="fl">0.99</span>,</span>
@@ -132,6 +134,17 @@ attribute homogeneity when <code>compact = TRUE</code>. Higher values prioritize
 compact shapes over attribute similarity. Default is 0.5.</p></dd>
 
 
+<dt id="arg-compact-metric">compact_metric<a class="anchor" aria-label="anchor" href="#arg-compact-metric"></a></dt>
+<dd><p>Either "centroid dispersion" (the default) or "NMI",
+the Normalized Moment of Inertia.</p></dd>
+
+
+<dt id="arg-homogeneous">homogeneous<a class="anchor" aria-label="anchor" href="#arg-homogeneous"></a></dt>
+<dd><p>Logical. If TRUE, minimizes within-region dissimilarity,
+so that regions are internally homogeneous. If FALSE, maximizes within-region
+dissimilarity.</p></dd>
+
+
 <dt id="arg-n-iterations">n_iterations<a class="anchor" aria-label="anchor" href="#arg-n-iterations"></a></dt>
 <dd><p>Integer. Number of construction phase iterations (default 100).
 Higher values explore more random starting solutions.</p></dd>
@@ -191,9 +204,10 @@ constraints.</p></li>
 shapes based on Feng, Rey, &amp; Wei (2022). Compact regions:</p><ul><li><p>Minimize travel time within regions (useful for service territories)</p></li>
 <li><p>Reduce gerrymandering potential (electoral districts)</p></li>
 <li><p>Often result in finding MORE regions due to efficient space usage</p></li>
-</ul><p><strong>Compactness metric</strong>: This implementation uses a centroid dispersion
-measure during optimization, rather than the Normalized Moment of Inertia (NMI)
-described in Feng et al. (2022). This design choice provides two advantages:</p><ol><li><p><strong>Point-based regionalization</strong>: The algorithm works with both
+</ul><p><strong>Compactness metric</strong>: This implementation provides two options
+for the compactness metric used during optimization. The Normalized Moment of Inertia
+(NMI) described in Feng et al. (2022) can be used. However, the default option
+is a dispersion measure. The dispersion measure has two advantages:</p><ol><li><p><strong>Point-based regionalization</strong>: The algorithm works with both
 polygon and point geometries. For point data, use KNN or distance-based
 weights (e.g., <code>weights = list(type = "knn", k = 6)</code>).</p></li>
 <li><p><strong>Computational efficiency</strong>: Centroid dispersion is O(n) per
