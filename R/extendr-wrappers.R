@@ -128,13 +128,17 @@ rust_ward_constrained <- function(attrs, n_regions, adj_i, adj_j) .Call(wrap__ru
 #' @param cooling_rate SA cooling rate (e.g., 0.99)
 #' @param tabu_length Tabu list length for SA
 #' @param seed Random seed
-#' @param centroids_x X coordinates of unit centroids (for compactness)
-#' @param centroids_y Y coordinates of unit centroids (for compactness)
+#' @param homogeneous Whether to maximize homogeneity (the default), or heterogeneity (if set to FALSE).
 #' @param compact Whether to optimize for compactness
 #' @param compact_weight Weight for compactness vs dissimilarity (0-1)
+#' @param compact_metric Compactness metric to use, either "centroid dispersion" or "nmi" (normalized moment of inertia)
+#' @param centroids_x X coordinates of unit centroids (for compactness)
+#' @param centroids_y Y coordinates of unit centroids (for compactness)
+#' @param areas Areas of units (for compactness)
+#' @param moments Second areal moments of units (for compactness)
 #' @return List with labels (1-based), n_regions, objective, and compactness
 #' @export
-rust_max_p <- function(attrs, threshold_var, threshold, adj_i, adj_j, n_iterations, n_sa_iterations, cooling_rate, tabu_length, seed, centroids_x, centroids_y, compact, compact_weight) .Call(wrap__rust_max_p, attrs, threshold_var, threshold, adj_i, adj_j, n_iterations, n_sa_iterations, cooling_rate, tabu_length, seed, centroids_x, centroids_y, compact, compact_weight)
+rust_max_p <- function(attrs, threshold_var, threshold, adj_i, adj_j, n_iterations, n_sa_iterations, cooling_rate, tabu_length, seed, homogeneous, compact, compact_weight, compact_metric, centroids_x, centroids_y, areas, moments) .Call(wrap__rust_max_p, attrs, threshold_var, threshold, adj_i, adj_j, n_iterations, n_sa_iterations, cooling_rate, tabu_length, seed, homogeneous, compact, compact_weight, compact_metric, centroids_x, centroids_y, areas, moments)
 
 #' Solve P-Median facility location problem
 #'

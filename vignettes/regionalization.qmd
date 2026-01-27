@@ -138,7 +138,7 @@ maxp_compact <- max_p_regions(
 maplibre_view(maxp_compact, column = ".region", legend = FALSE)
 ```
 
-The `compact_weight` parameter (0 to 1) controls the trade-off between attribute homogeneity and geometric compactness. Higher values prioritize compact shapes.
+The `compact_weight` parameter (0 to 1) controls the trade-off between attribute homogeneity and geometric compactness. Higher values prioritize compact shapes. The parameter `compact_metric` provides a choice between two compactness metrics. The default, "centroid dispersion", is appropriate for both polygons (e.g., state borders) and point geometries (e.g., store locations). The alternative option, "NMI" (normalized moment of inertia), is the original metric proposed by @feng2022, and is appropriate only for polygons.
 
 ## SKATER algorithm
 

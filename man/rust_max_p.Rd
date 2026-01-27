@@ -15,10 +15,14 @@ rust_max_p(
   cooling_rate,
   tabu_length,
   seed,
+  homogeneous,
+  compact,
+  compact_weight,
+  compact_metric,
   centroids_x,
   centroids_y,
-  compact,
-  compact_weight
+  areas,
+  moments
 )
 }
 \arguments{
@@ -42,13 +46,21 @@ rust_max_p(
 
 \item{seed}{Random seed}
 
-\item{centroids_x}{X coordinates of unit centroids (for compactness)}
-
-\item{centroids_y}{Y coordinates of unit centroids (for compactness)}
+\item{homogeneous}{Whether to maximize homogeneity (the default), or heterogeneity (if set to FALSE).}
 
 \item{compact}{Whether to optimize for compactness}
 
 \item{compact_weight}{Weight for compactness vs dissimilarity (0-1)}
+
+\item{compact_metric}{Compactness metric to use, either "centroid dispersion" or "nmi" (normalized moment of inertia)}
+
+\item{centroids_x}{X coordinates of unit centroids (for compactness)}
+
+\item{centroids_y}{Y coordinates of unit centroids (for compactness)}
+
+\item{areas}{Areas of units (for compactness)}
+
+\item{moments}{Second areal moments of units (for compactness)}
 }
 \value{
 List with labels (1-based), n_regions, objective, and compactness
