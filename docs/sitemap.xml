@@ -15,12 +15,15 @@
 <url><loc>https://walker-data.com/spopt-r/reference/cflp.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/distance_matrix.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/distance_matrix_geographic.html</loc></url>
+<url><loc>https://walker-data.com/spopt-r/reference/dot-second_moa_ring.html</loc></url>
+<url><loc>https://walker-data.com/spopt-r/reference/dot-second_moment_single_geom.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/frlm.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/huff.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/index.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/lscp.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/max_p_regions.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/mclp.html</loc></url>
+<url><loc>https://walker-data.com/spopt-r/reference/nmi.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/p_center.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/p_dispersion.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/p_median.html</loc></url>
@@ -42,6 +45,7 @@
 <url><loc>https://walker-data.com/spopt-r/reference/rust_skater.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/rust_spenc.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/rust_ward_constrained.html</loc></url>
+<url><loc>https://walker-data.com/spopt-r/reference/second_areal_moment.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/skater.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/sp_weights.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/spenc.html</loc></url>
