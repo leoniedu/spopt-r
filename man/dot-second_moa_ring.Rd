@@ -2,10 +2,19 @@
 % Please edit documentation in R/compactness-measures.R
 \name{.second_moa_ring}
 \alias{.second_moa_ring}
-\title{Compute the second moment of area for a single ring}
+\title{Second areal moment for a single ring}
 \usage{
 .second_moa_ring(coords, centroid)
 }
-\description{
-Compute the second moment of area for a single ring
+\arguments{
+\item{coords}{A matrix of coordinates for a ring}
+
+\item{centroid}{Centroid coordinates, supplied as an object of class sf, sfc, or sfg}
 }
+\value{
+A single number, giving the second areal moment for a ring
+}
+\description{
+Computes the second areal moment for a single ring
+}
+\keyword{internal}

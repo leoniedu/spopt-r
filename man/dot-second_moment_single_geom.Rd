@@ -2,10 +2,17 @@
 % Please edit documentation in R/compactness-measures.R
 \name{.second_moment_single_geom}
 \alias{.second_moment_single_geom}
-\title{Process a single geometry (handles POLYGON and MULTIPOLYGON)}
+\title{Second areal moment for a single geometry}
 \usage{
 .second_moment_single_geom(geom)
 }
-\description{
-Process a single geometry (handles POLYGON and MULTIPOLYGON)
+\arguments{
+\item{geom}{A simple feature geometry}
 }
+\value{
+A single number, giving the second areal moment for the geometry
+}
+\description{
+Computes the second areal moment for a single geometry (POLYGON or MULTIPOLYGON)
+}
+\keyword{internal}

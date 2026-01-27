@@ -128,6 +128,7 @@ rust_ward_constrained <- function(attrs, n_regions, adj_i, adj_j) .Call(wrap__ru
 #' @param cooling_rate SA cooling rate (e.g., 0.99)
 #' @param tabu_length Tabu list length for SA
 #' @param seed Random seed
+#' @param homogeneous Whether to maximize homogeneity (the default), or heterogeneity (if set to FALSE).
 #' @param compact Whether to optimize for compactness
 #' @param compact_weight Weight for compactness vs dissimilarity (0-1)
 #' @param compact_metric Compactness metric to use, either "centroid dispersion" or "nmi" (normalized moment of inertia)

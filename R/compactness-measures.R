@@ -72,7 +72,11 @@ second_areal_moment <- function(x, project = TRUE) {
   results
 }
 
-#' Process a single geometry (handles POLYGON and MULTIPOLYGON)
+#' @title Second areal moment for a single geometry
+#' @description Computes the second areal moment for a single geometry (POLYGON or MULTIPOLYGON)
+#' @param geom A simple feature geometry
+#' @return A single number, giving the second areal moment for the geometry
+#' @keywords internal
 .second_moment_single_geom <- function(geom) {
   # Get the overall centroid
   overall_centroid <- sf::st_centroid(sf::st_sfc(geom))
@@ -128,7 +132,12 @@ second_areal_moment <- function(x, project = TRUE) {
   total_moa
 }
 
-#' Compute the second moment of area for a single ring
+#' @title Second areal moment for a single ring
+#' @description Computes the second areal moment for a single ring
+#' @param coords A matrix of coordinates for a ring
+#' @param centroid Centroid coordinates, supplied as an object of class sf, sfc, or sfg
+#' @return A single number, giving the second areal moment for a ring
+#' @keywords internal
 .second_moa_ring <- function(coords, centroid) {
   # Center coordinates at the centroid
   centroid_coords <- sf::st_coordinates(centroid)
@@ -164,6 +173,7 @@ second_areal_moment <- function(x, project = TRUE) {
 
 #' Automatically select an appropriate equal-area projection
 #' @noRd
+#' @keywords internal
 .auto_project <- function(geom) {
   # Get bounding box
   bbox <- sf::st_bbox(geom)
@@ -197,6 +207,7 @@ second_areal_moment <- function(x, project = TRUE) {
 #' See Li et al. (2013, 2014) for additional details.
 #' @param x An sf object, sfc geometry column, or sfg geometry
 #' @return Numeric vector of normalized moments of inertia.
+#' @export
 #' @references 
 #' 
 #' Feng, X., Rey, S., and Wei, R. (2022). "The max-p-compact-regions problem." 
