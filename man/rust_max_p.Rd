@@ -52,7 +52,7 @@ rust_max_p(
 
 \item{compact_weight}{Weight for compactness vs dissimilarity (0-1)}
 
-\item{compact_metric}{Compactness metric to use, either "centroid dispersion" or "nmi" (normalized moment of inertia)}
+\item{compact_metric}{Compactness metric to use, either "centroid" or "nmi" (normalized moment of inertia)}
 
 \item{centroids_x}{X coordinates of unit centroids (for compactness)}
 

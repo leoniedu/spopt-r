@@ -37,8 +37,8 @@
 #' @param compact_weight Numeric between 0 and 1. Weight for compactness vs
 #'   attribute homogeneity when `compact = TRUE`. Higher values prioritize
 #'   compact shapes over attribute similarity. Default is 0.5.
-#' @param compact_metric Either "centroid dispersion" (the default) or "NMI",
-#'   the Normalized Moment of Inertia.
+#' @param compact_metric Either "centroid" (the default) or "nmi"
+#'   (Normalized Moment of Inertia).
 #' @param homogeneous Logical. If TRUE, minimizes within-region dissimilarity,
 #'   so that regions are internally homogeneous. If FALSE, maximizes within-region
 #'   dissimilarity.
@@ -189,7 +189,7 @@ max_p_regions <- function(data,
                           bridge_islands = FALSE,
                           compact = FALSE,
                           compact_weight = 0.5,
-                          compact_metric = "centroid dispersion",
+                          compact_metric = "centroid",
                           homogeneous = TRUE,
                           n_iterations = 100L,
                           n_sa_iterations = 100L,
@@ -276,7 +276,7 @@ max_p_regions <- function(data,
   if (compact) {
     geoms <- sf::st_geometry(data)
 
-    if ((toupper(compact_metric) == "NMI") && !is.na(sf::st_crs(geoms)) && sf::st_is_longlat(geoms)) {
+    if ((tolower(compact_metric) == "nmi") && !is.na(sf::st_crs(geoms)) && sf::st_is_longlat(geoms)) {
       warning("Coordinates are geodetic and will be projected.")
       geoms <- .auto_project(geoms)
     }
@@ -288,7 +288,7 @@ max_p_regions <- function(data,
     centroids_y <- as.numeric(coords[, 2])
     
     # Get areas and moments if using NMI metric
-    if (toupper(compact_metric) == "NMI") {
+    if (tolower(compact_metric) == "nmi") {
       areas <- geoms |> sf::st_area() |> as.numeric()
       second_areal_moments <- second_areal_moment(geoms)
     }

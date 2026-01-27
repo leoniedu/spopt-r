@@ -299,7 +299,7 @@ fn rust_azp(
 /// @param seed Random seed
 /// @param compact Whether to optimize for compactness
 /// @param compact_weight Weight for compactness vs dissimilarity (0-1)
-/// @param compact_metric Compactness metric to use, either "centroid dispersion" or "nmi" (normalized moment of inertia)
+/// @param compact_metric Compactness metric to use, either "centroid" or "nmi" (normalized moment of inertia)
 /// @param centroids_x X coordinates of unit centroids (for compactness)
 /// @param centroids_y Y coordinates of unit centroids (for compactness)
 /// @param areas Areas of units (for compactness)
@@ -331,11 +331,11 @@ fn rust_max_p(
     // Parse compact_metric string to enum
     let metric = match compact_metric.to_lowercase().as_str() {
         "nmi" => region::maxp::CompactnessMetric::NMI,
-        "centroid dispersion" | "centroid-dispersion" | "centroid_dispersion" => {
+        "centroid" | "centroid dispersion" | "centroid-dispersion" | "centroid_dispersion" => {
             region::maxp::CompactnessMetric::CentroidDispersion
         }
         _ => {
-            panic!("Invalid `compact_metric`: '{}'. Must be 'nmi' or 'centroid dispersion'", compact_metric);
+            panic!("Invalid `compact_metric`: '{}'. Must be 'nmi' or 'centroid'", compact_metric);
         }
     };
 

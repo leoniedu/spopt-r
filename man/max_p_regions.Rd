@@ -13,7 +13,7 @@ max_p_regions(
   bridge_islands = FALSE,
   compact = FALSE,
   compact_weight = 0.5,
-  compact_metric = "centroid dispersion",
+  compact_metric = "centroid",
   homogeneous = TRUE,
   n_iterations = 100L,
   n_sa_iterations = 100L,
@@ -65,8 +65,8 @@ Default is FALSE.}
 attribute homogeneity when \code{compact = TRUE}. Higher values prioritize
 compact shapes over attribute similarity. Default is 0.5.}
 
-\item{compact_metric}{Either "centroid dispersion" (the default) or "NMI",
-the Normalized Moment of Inertia.}
+\item{compact_metric}{Either "centroid" (the default) or "nmi"
+(Normalized Moment of Inertia).}
 
 \item{homogeneous}{Logical. If TRUE, minimizes within-region dissimilarity,
 so that regions are internally homogeneous. If FALSE, maximizes within-region
