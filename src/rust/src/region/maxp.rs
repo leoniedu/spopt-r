@@ -707,9 +707,11 @@ fn simulated_annealing(
         0.0
     };
 
-    // Combined objective: minimize dissimilarity (or maximize if `heterogeneous = false`), maximize compactness
+    // Combined objective: minimize dissimilarity (or maximize if homogeneous = false), maximize compactness
     // We negate compactness since we're minimizing
-    let mut current_objective = (1.0 - compact_weight) * dissimilarity_obj - compact_weight * compactness_obj * 100.0;
+    // dissim_sign flips the objective when we want heterogeneous regions
+    let dissim_sign = if homogeneous { 1.0 } else { -1.0 };
+    let mut current_objective = (1.0 - compact_weight) * dissim_sign * dissimilarity_obj - compact_weight * compactness_obj * 100.0;
     let mut best_state = state.clone();
     let mut best_objective = current_objective;
 
@@ -784,9 +786,8 @@ fn simulated_annealing(
             0.0
         };
 
-        // Combined delta: minimize dissimilarity (or maximize if `homogeneous  = true`),
+        // Combined delta: minimize dissimilarity (or maximize if homogeneous = false),
         //                 maximize compactness
-        let dissim_sign = if homogeneous { 1.0 } else { -1.0 };
         let delta = (1.0 - compact_weight) * dissim_sign * dissim_delta - compact_weight * compact_delta * 100.0;
 
         if tabu_list.contains(&reverse_tuple) {
