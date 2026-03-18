@@ -53,6 +53,14 @@ service time). Routes that would exceed this limit are split.}
 minimize the longest route's total time after cost optimization. This
 runs a post-optimization phase that may slightly increase total cost
 (bounded to a small percentage). Ignored when \code{method = "savings"}.}
+
+\item{earliest}{Optional earliest arrival/service time at each stop. Supply
+either a numeric vector of length \code{nrow(locations)} or a column name in
+\code{locations}. Must be supplied together with \code{latest}.}
+
+\item{latest}{Optional latest arrival/service time at each stop. Must be
+supplied together with \code{earliest}. A vehicle may arrive early and wait,
+but cannot begin service after this time.}
 }
 \value{
 An sf object (the input \code{locations}) with added columns:
