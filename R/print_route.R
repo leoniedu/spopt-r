@@ -1,0 +1,93 @@
+#' @export
+print.spopt_tsp <- function(x, ...) {
+  meta <- attr(x, "spopt")
+  cat(sprintf("TSP route: %d locations, %s tour\n",
+              meta$n_locations, meta$route_type))
+  cat(sprintf("  Method: %s | Cost: %.2f | Improvement: %.1f%% over NN\n",
+              meta$method, meta$total_cost, meta$improvement_pct))
+  if (isTRUE(meta$has_time_windows)) {
+    cat("  Time windows: active\n")
+  }
+  cat(sprintf("  Solve time: %.3fs\n", meta$solve_time))
+  invisible(x)
+}
+
+#' @export
+print.spopt_vrp <- function(x, ...) {
+  meta <- attr(x, "spopt")
+  cat(sprintf("VRP routes: %d locations, %d vehicles (depot: %d)\n",
+              meta$n_locations, meta$n_vehicles, meta$depot))
+  cat(sprintf("  Method: %s | Total cost: %.1f | Improvement: %.1f%%\n",
+              meta$method, meta$total_cost, meta$improvement_pct))
+
+  constraints <- character(0)
+  if (!is.null(meta$vehicle_capacity)) {
+    constraints <- c(constraints, sprintf("Capacity: %.0f", meta$vehicle_capacity))
+  }
+  if (!is.null(meta$max_route_time)) {
+    constraints <- c(constraints, sprintf("Max route time: %.0f", meta$max_route_time))
+  }
+  if (!is.null(meta$balance)) {
+    bal_str <- sprintf("Balance: %s (%d move%s)",
+                       meta$balance, meta$balance_iterations,
+                       if (meta$balance_iterations == 1) "" else "s")
+    constraints <- c(constraints, bal_str)
+  }
+  if (length(constraints) > 0) {
+    cat(sprintf("  %s\n", paste(constraints, collapse = " | ")))
+  }
+
+  cat(sprintf("  Solve time: %.3fs\n", meta$solve_time))
+  invisible(x)
+}
+
+#' @export
+summary.spopt_tsp <- function(object, ...) {
+  meta <- attr(object, "spopt")
+  print.spopt_tsp(object)
+
+  cat("\nTour sequence:\n")
+  tour <- meta$tour
+  cat(sprintf("  %s\n", paste(tour, collapse = " -> ")))
+
+  if (isTRUE(meta$has_time_windows) &&
+      !is.null(meta$arrival_time) &&
+      length(meta$arrival_time) > 0) {
+    cat("\nSchedule:\n")
+    # Use tour order from metadata, exclude depot return (last element of closed tour)
+    n_sched <- length(tour)
+    if (meta$route_type == "closed" && n_sched > 1 && tour[n_sched] == tour[1]) {
+      n_sched <- n_sched - 1
+    }
+    schedule <- data.frame(
+      Stop = tour[seq_len(n_sched)],
+      Arrival = round(meta$arrival_time[seq_len(n_sched)], 2),
+      Departure = round(meta$departure_time[seq_len(n_sched)], 2)
+    )
+    print(schedule, row.names = FALSE)
+  }
+
+  invisible(object)
+}
+
+#' @export
+summary.spopt_vrp <- function(object, ...) {
+  meta <- attr(object, "spopt")
+  print.spopt_vrp(object)
+
+  show_time <- !isTRUE(all.equal(meta$vehicle_times, meta$vehicle_costs))
+
+  cat("\nPer-vehicle summary:\n")
+  tbl <- data.frame(
+    Vehicle = seq_len(meta$n_vehicles),
+    Stops = meta$vehicle_stops,
+    Load = meta$vehicle_loads,
+    Cost = meta$vehicle_costs
+  )
+  if (show_time) {
+    tbl$Time <- meta$vehicle_times
+  }
+  print(tbl, row.names = FALSE)
+
+  invisible(object)
+}

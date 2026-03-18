@@ -627,3 +627,100 @@ test_that("vrp balance='time' cost increase is bounded", {
   cost_increase_pct <- (meta_bal$total_cost - meta_no$total_cost) / meta_no$total_cost * 100
   expect_true(cost_increase_pct <= 2.5)
 })
+
+# ---- Print / summary methods ----
+
+test_that("print.spopt_tsp returns invisibly with correct class", {
+  skip_if_not_installed("sf")
+
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, 1, 0), y = c(0, 0, 1, 1)),
+    coords = c("x", "y")
+  )
+
+  result <- route_tsp(pts, depot = 1)
+  out <- expect_output(ret <- print(result), "TSP route")
+  expect_s3_class(ret, "spopt_tsp")
+})
+
+test_that("print.spopt_vrp returns invisibly with correct class", {
+  skip_if_not_installed("sf")
+
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, 2, 3), y = c(0, 0, 0, 0), demand = c(0, 5, 5, 5)),
+    coords = c("x", "y")
+  )
+
+  result <- route_vrp(pts, depot = 1, demand_col = "demand", vehicle_capacity = 10)
+  out <- expect_output(ret <- print(result), "VRP routes")
+  expect_s3_class(ret, "spopt_vrp")
+})
+
+test_that("summary.spopt_tsp shows tour sequence", {
+  skip_if_not_installed("sf")
+
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, 1, 0), y = c(0, 0, 1, 1)),
+    coords = c("x", "y")
+  )
+
+  result <- route_tsp(pts, depot = 1)
+  expect_output(summary(result), "Tour sequence")
+})
+
+test_that("summary.spopt_vrp shows per-vehicle table", {
+  skip_if_not_installed("sf")
+
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, 2, 3), y = c(0, 0, 0, 0), demand = c(0, 5, 5, 5)),
+    coords = c("x", "y")
+  )
+
+  result <- route_vrp(pts, depot = 1, demand_col = "demand", vehicle_capacity = 10)
+  expect_output(summary(result), "Per-vehicle summary")
+})
+
+test_that("summary.spopt_vrp shows Time column when service_time is set", {
+  skip_if_not_installed("sf")
+
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, 2, 3, 4), y = c(0, 0, 0, 0, 0),
+               demand = c(0, 5, 5, 5, 5)),
+    coords = c("x", "y")
+  )
+
+  result <- route_vrp(pts, depot = 1, demand_col = "demand",
+                       vehicle_capacity = 100,
+                       service_time = c(0, 3, 3, 3, 3))
+  expect_output(summary(result), "Time")
+})
+
+# ---- VRP or-opt ----
+
+test_that("vrp local search (2-opt + or-opt) improves on savings construction", {
+  skip_if_not_installed("sf")
+
+  set.seed(99)
+  pts <- sf::st_as_sf(
+    data.frame(x = runif(16), y = runif(16),
+               demand = c(0, rpois(15, 8))),
+    coords = c("x", "y")
+  )
+
+  # method="savings" is construction only; method="2-opt" adds
+  # intra-route 2-opt + or-opt and inter-route relocate + swap.
+  # Can't isolate or-opt from 2-opt via the R API, but we verify
+  # the full local search pipeline improves on the construction baseline.
+  result_savings <- route_vrp(pts, depot = 1, demand_col = "demand",
+                               vehicle_capacity = 30, method = "savings")
+  result_opt <- route_vrp(pts, depot = 1, demand_col = "demand",
+                           vehicle_capacity = 30, method = "2-opt")
+
+  meta_savings <- attr(result_savings, "spopt")
+  meta_opt <- attr(result_opt, "spopt")
+
+  # Local search should be at least as good as savings-only
+  expect_true(meta_opt$total_cost <= meta_savings$total_cost + 1e-6)
+  # And improvement_pct should be non-negative
+  expect_true(meta_opt$improvement_pct >= 0)
+})

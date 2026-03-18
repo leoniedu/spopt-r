@@ -355,6 +355,79 @@ fn intra_route_two_opt(route: &mut Route, depot: usize, matrix: &[Vec<f64>], sym
 }
 
 // ---------------------------------------------------------------------------
+// Intra-route or-opt: relocate 1, 2, or 3 consecutive stops within a route
+// ---------------------------------------------------------------------------
+
+fn intra_route_or_opt(route: &mut Route, depot: usize, matrix: &[Vec<f64>], service_times: &[f64]) -> bool {
+    if route.stops.len() < 3 {
+        return false;
+    }
+
+    let mut tour = route.full_tour(depot);
+    let mut improved = false;
+
+    for seg_len in 1..=3usize {
+        let mut start = 1;
+        while start + seg_len <= tour.len() - 1 {
+            let before_seg = tour[start - 1];
+            let seg_first = tour[start];
+            let seg_last = tour[start + seg_len - 1];
+            let after_seg = tour[start + seg_len];
+
+            let removal_saving = matrix[before_seg][seg_first]
+                + matrix[seg_last][after_seg]
+                - matrix[before_seg][after_seg];
+
+            let mut best_insert: Option<usize> = None;
+            let mut best_gain = 1e-10;
+
+            for insert_after in 0..tour.len() - 1 {
+                // Skip positions that overlap with the segment
+                if insert_after >= start.saturating_sub(1) && insert_after < start + seg_len {
+                    continue;
+                }
+
+                let a = tour[insert_after];
+                let b = tour[insert_after + 1];
+                let insert_cost = matrix[a][seg_first] + matrix[seg_last][b] - matrix[a][b];
+                let gain = removal_saving - insert_cost;
+
+                if gain > best_gain {
+                    best_gain = gain;
+                    best_insert = Some(insert_after);
+                }
+            }
+
+            if let Some(insert_pos) = best_insert {
+                let segment: Vec<usize> = tour[start..start + seg_len].to_vec();
+                tour.drain(start..start + seg_len);
+
+                let adjusted_pos = if insert_pos > start {
+                    insert_pos - seg_len
+                } else {
+                    insert_pos
+                };
+
+                let insert_idx = adjusted_pos + 1;
+                for (k, &node) in segment.iter().enumerate() {
+                    tour.insert(insert_idx + k, node);
+                }
+                improved = true;
+            } else {
+                start += 1;
+            }
+        }
+    }
+
+    if improved {
+        route.stops = tour[1..tour.len() - 1].to_vec();
+        route.recompute(depot, matrix, service_times);
+    }
+
+    improved
+}
+
+// ---------------------------------------------------------------------------
 // Inter-route relocate: move one customer from one route to another
 // ---------------------------------------------------------------------------
 
@@ -853,9 +926,12 @@ pub fn solve(
         loop {
             let mut any_improved = false;
 
-            // Intra-route 2-opt on each route
+            // Intra-route 2-opt and or-opt on each route
             for route in routes.iter_mut() {
                 if intra_route_two_opt(route, depot, &matrix, symmetric, service_times) {
+                    any_improved = true;
+                }
+                if intra_route_or_opt(route, depot, &matrix, service_times) {
                     any_improved = true;
                 }
             }
@@ -905,9 +981,10 @@ pub fn solve(
         loop {
             let mut any_improved = false;
 
-            // Intra-route 2-opt to clean up after balance moves
+            // Intra-route 2-opt and or-opt to clean up after balance moves
             for route in routes.iter_mut() {
                 intra_route_two_opt(route, depot, &matrix, symmetric, service_times);
+                intra_route_or_opt(route, depot, &matrix, service_times);
             }
 
             // Try relocating from the heaviest route
