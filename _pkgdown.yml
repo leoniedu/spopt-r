@@ -32,6 +32,8 @@ navbar:
         href: articles/facility-location.html
       - text: Huff Model
         href: articles/huff-model.html
+      - text: Route Optimization
+        href: articles/routing.html
       - text: "---"
       - text: Travel-Time Cost Matrices
         href: articles/travel-time-matrices.html
@@ -58,6 +60,12 @@ reference:
   - cflp
   - frlm
 
+- title: Route Optimization
+  desc: Single- and multi-vehicle routing
+  contents:
+  - route_tsp
+  - route_vrp
+
 - title: Market Analysis
   desc: Market share and competition modeling
   contents:
@@ -75,6 +83,7 @@ reference:
   desc: Example datasets
   contents:
   - tarrant_travel_times
+  - delivery_data
 
 - title: internal
   contents:
@@ -92,6 +101,7 @@ articles:
   - regionalization
   - facility-location
   - huff-model
+  - routing
 
 - title: Advanced Topics
   navbar: ~

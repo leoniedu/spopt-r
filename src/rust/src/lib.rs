@@ -580,6 +580,8 @@ fn rust_tsp(
 /// @param service_times Optional service time at each stop (NULL for zero)
 /// @param max_route_time Optional maximum total time per route (NULL for unlimited)
 /// @param balance_time Whether to run route-time balancing phase
+/// @param earliest Optional earliest arrival times at each stop
+/// @param latest Optional latest arrival times at each stop
 /// @return List with vehicle assignments, visit orders, costs, and route details
 /// @export
 #[extendr]
@@ -593,6 +595,8 @@ fn rust_vrp(
     service_times: Nullable<Vec<f64>>,
     max_route_time: Nullable<f64>,
     balance_time: bool,
+    earliest: Nullable<Vec<f64>>,
+    latest: Nullable<Vec<f64>>,
 ) -> List {
     let n = cost_matrix.nrows();
     if depot < 0 || depot as usize >= n {
@@ -641,6 +645,43 @@ fn rust_vrp(
         }
     }
 
+    let earliest_opt = earliest.into_option();
+    let latest_opt = latest.into_option();
+
+    if earliest_opt.is_some() != latest_opt.is_some() {
+        extendr_api::throw_r_error("Both `earliest` and `latest` must be supplied together.");
+    }
+    if let Some(values) = earliest_opt.as_ref() {
+        if values.len() != n {
+            extendr_api::throw_r_error(format!(
+                "`earliest` must have length {}, got {}", n, values.len()
+            ));
+        }
+        if values.iter().any(|v| !v.is_finite()) {
+            extendr_api::throw_r_error("`earliest` must contain finite values.");
+        }
+    }
+    if let Some(values) = latest_opt.as_ref() {
+        if values.len() != n {
+            extendr_api::throw_r_error(format!(
+                "`latest` must have length {}, got {}", n, values.len()
+            ));
+        }
+        if values.iter().any(|v| !v.is_finite()) {
+            extendr_api::throw_r_error("`latest` must contain finite values.");
+        }
+    }
+    if let (Some(ew), Some(lw)) = (earliest_opt.as_ref(), latest_opt.as_ref()) {
+        for idx in 0..n {
+            if ew[idx] > lw[idx] + 1e-10 {
+                extendr_api::throw_r_error(format!(
+                    "`earliest[{}]` ({}) is greater than `latest[{}]` ({}).",
+                    idx, ew[idx], idx, lw[idx]
+                ));
+            }
+        }
+    }
+
     route::vrp::solve(
         cost_matrix,
         depot as usize,
@@ -651,6 +692,8 @@ fn rust_vrp(
         &svc,
         max_t,
         balance_time,
+        earliest_opt.as_deref(),
+        latest_opt.as_deref(),
     )
 }
 

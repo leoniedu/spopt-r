@@ -70,7 +70,7 @@ maplibre(style = openfreemap_style("bright"), bounds = stops) |>
   )
 ```
 
-The red marker is the depot (Amazon DDA9 on San Jacinto Dr). Blue markers are delivery stops spread from central Fort Worth west into Aledo and Willow Park. Some stops cluster tightly in Ridglea and Benbrook; others are 20+ minutes out in Parker County. That geographic spread is what makes the stop sequence matter.
+The red marker is the depot (Amazon DDA9 on San Jacinto Dr). Blue markers are delivery stops spread from central Fort Worth west into Aledo and Willow Park.
 
 ## Generating the travel-time matrix
 
@@ -111,7 +111,7 @@ ttm <- ttm_long |>
   as.matrix()
 ```
 
-Any routing engine that produces pairwise travel times works here - OSRM, Valhalla, mapboxapi, Google Distance Matrix. The optimizer doesn't care how the matrix was computed; it just needs the numbers.
+Any routing engine that produces pairwise travel times works here; r5r is a great choice, but there are many others with R bindings, including OSRM, Valhalla (open source), Mapbox, and Google (commercial), among others.
 
 ## Single-driver route: TSP
 
@@ -138,9 +138,7 @@ result |>
   select(id, address, .visit_order)
 ```
 
-The optimizer clusters geographically - it handles the Aledo stops together rather than bouncing back and forth. That's the whole point. Let's see it on a map.
-
-The bundled `delivery_data` includes pre-computed route geometries from r5r, so we can draw the actual driving paths:
+The optimizer clusters geographically - it handles the Benbrook stops together rather than bouncing back and forth. As the bundled `delivery_data` includes pre-computed route geometries from r5r, we can draw the actual driving paths:
 
 ```{r}
 tsp_route <- delivery_data$tsp_route
@@ -187,7 +185,7 @@ maplibre(style = openfreemap_style("bright"), bounds = stops) |>
   )
 ```
 
-The route follows actual roads between stops. Notice how it sweeps through the western stops (Aledo, Willow Park) in one pass rather than zigzagging back to central Fort Worth.
+The route follows actual roads between stops. Notice the optimized route saves the far western stops (Aledo, Willow Park) for last before returning to the depot.
 
 ### Open routes
 
@@ -246,20 +244,10 @@ cat(sprintf("Vehicles used: %d\n", meta_vrp$n_vehicles))
 cat(sprintf("Total drive time: %.0f minutes\n", meta_vrp$total_cost))
 ```
 
-The solver uses a Clarke-Wright savings heuristic for initial route construction, then improves with intra-route 2-opt (resequencing stops within each route) and inter-route moves (swapping stops between vehicles).
-
-Let's see how the stops got assigned:
+The solver uses a Clarke-Wright savings heuristic for initial route construction, then improves with intra-route 2-opt and or-opt (resequencing stops within each route) and inter-route relocate and swap (moving stops between vehicles).
 
 ```{r}
-for (v in seq_len(meta_vrp$n_vehicles)) {
-  vehicle_stops <- result_vrp |>
-    filter(.vehicle == v) |>
-    arrange(.visit_order)
-  load <- meta_vrp$vehicle_loads[v]
-  time <- meta_vrp$vehicle_costs[v]
-  cat(sprintf("\nVan %d: %d stops, %d packages, %.0f min drive time\n",
-              v, nrow(vehicle_stops), load, time))
-}
+summary(result_vrp)
 ```
 
 ### Visualizing vehicle routes
@@ -313,7 +301,7 @@ maplibre(style = openfreemap_style("bright"), bounds = stops) |>
   )
 ```
 
-Each color is a different van's route. The solver clusters geographically - nearby stops go on the same truck - while respecting the 35-package capacity. All three routes start and end at the depot (black marker).
+Each color is a different van's route, with all routes ending at the depot (the black marker). You can see how the three routes are partitioned geographically; the green driver handles the Parker County / western stops, whereas the blue driver largely handles the southern stops and the red driver the northern stops.
 
 ### Constraining the fleet size
 
@@ -342,24 +330,18 @@ Fewer vehicles means longer routes per driver. The solver finds the best assignm
 If drivers have a 90-minute shift limit, set `max_route_time`. The solver will split routes so that no vehicle exceeds the time budget. You can also account for time spent at each stop with `service_time` -- loading/unloading, signatures, etc.
 
 ```{r}
+n <- nrow(stops)
 result_shift <- route_vrp(
   stops,
   depot = 1,
   demand_col = "packages",
   vehicle_capacity = 50,
   cost_matrix = ttm,
-  service_time = 3,       # 3 minutes at each stop
-  max_route_time = 90     # 90-minute shift limit
+  service_time = rep(3, n),   # 3 minutes at each stop
+  max_route_time = 90         # 90-minute shift limit
 )
 
-meta_shift <- attr(result_shift, "spopt")
-cat(sprintf("Vehicles needed: %d\n", meta_shift$n_vehicles))
-for (v in seq_len(meta_shift$n_vehicles)) {
-  cat(sprintf("  Van %d: %.0f min drive + %.0f min service = %.0f min total\n",
-              v, meta_shift$vehicle_costs[v],
-              meta_shift$vehicle_times[v] - meta_shift$vehicle_costs[v],
-              meta_shift$vehicle_times[v]))
-}
+summary(result_shift)
 ```
 
 `max_route_time` is a hard constraint: total time (travel + service) on every route stays within the limit. The objective is still minimizing total travel time, so the solver won't use extra vehicles unless the time constraint forces it.
@@ -373,21 +355,97 @@ result_balanced <- route_vrp(
   stops,
   depot = 1,
   demand_col = "packages",
-  vehicle_capacity = 50,
+  vehicle_capacity = 35,
   cost_matrix = ttm,
-  service_time = 3,
+  service_time = rep(3, n),
   balance = "time"
 )
 
-meta_bal <- attr(result_balanced, "spopt")
-for (v in seq_len(meta_bal$n_vehicles)) {
-  cat(sprintf("  Van %d: %.0f min total\n", v, meta_bal$vehicle_times[v]))
-}
-cat(sprintf("Cost without balancing: %.0f min\n", meta_vrp$total_cost))
-cat(sprintf("Cost with balancing:    %.0f min\n", meta_bal$total_cost))
+summary(result_balanced)
 ```
 
 The balancing phase only runs when `method = "2-opt"` (the default). It targets the longest route and tries moving or swapping stops to shorten it. Capacity and time constraints are still respected.
+
+### Time windows
+
+If customers have availability windows, set `earliest` and `latest`. The solver respects these when constructing and improving routes. A vehicle may arrive early and wait, but it cannot begin service after the `latest` time.
+
+```{r}
+# Simulate availability windows: depot open all day, customers available
+# within a 30-minute window starting at staggered times
+set.seed(42)
+window_open <- c(0, runif(n - 1, 0, 40))   # depot at 0
+window_close <- c(200, window_open[-1] + 30) # 30-minute windows
+
+result_tw <- route_vrp(
+  stops,
+  depot = 1,
+  demand_col = "packages",
+  vehicle_capacity = 50,
+  cost_matrix = ttm,
+  service_time = rep(3, n),
+  earliest = window_open,
+  latest = window_close
+)
+
+summary(result_tw)
+```
+
+Arrival and departure times are added to the output as `.arrival_time` and `.departure_time` columns. Time windows interact with all other constraints: capacity limits, `max_route_time` (which includes waiting time), and fleet size. Note that `balance = "time"` is disabled when time windows are active.
+
+## Generating route geometries for mapping
+
+The maps above use pre-bundled road geometries. Routing engines return travel-time matrices and driving geometries through separate API calls: the matrix gives you the numbers for optimization, and a directions/itinerary call gives you the road geometry for visualization. This two-step workflow is standard across all routing engines (r5r, OSRM, mapboxapi, Google).
+
+To generate your own route lines: extract the stop sequence from the solver output, then request driving directions for each consecutive pair of stops.
+
+Here's how to do it with r5r:
+
+```{r}
+#| eval: false
+library(r5r)
+
+# Prepare stop coordinates for r5r
+r5r_pts <- stops |>
+  st_coordinates() |>
+  as_tibble() |>
+  rename(lon = X, lat = Y) |>
+  mutate(id = stops$id)
+
+# Get road geometries for a sequence of stops
+get_route_legs <- function(tour_indices, r5r_core) {
+  map(seq_len(length(tour_indices) - 1), \(i) {
+    detailed_itineraries(
+      r5r_core,
+      origins = r5r_pts |> filter(id == stops$id[tour_indices[i]]),
+      destinations = r5r_pts |> filter(id == stops$id[tour_indices[i + 1]]),
+      mode = "CAR",
+      departure_datetime = as.POSIXct("2025-03-15 08:00:00"),
+      shortest_path = TRUE
+    )
+  }) |>
+    list_rbind()
+}
+
+# TSP: use the tour from metadata
+tsp_meta <- attr(result, "spopt")
+tsp_route <- get_route_legs(tsp_meta$tour, r5r_core)
+
+# VRP: build each vehicle's tour (depot -> stops -> depot)
+vrp_route <- seq_len(meta_vrp$n_vehicles) |>
+  map(\(v) {
+    vehicle_stops <- result_vrp |>
+      filter(.vehicle == v) |>
+      arrange(.visit_order)
+
+    vehicle_tour <- c(1, match(vehicle_stops$id, stops$id), 1)
+    get_route_legs(vehicle_tour, r5r_core) |>
+      mutate(vehicle = v)
+  }) |>
+  list_rbind()
+```
+
+The same pattern works with other routing engines. With OSRM (`osrm::osrmRoute()`), you'd request each leg as a pair of coordinates. With mapboxapi (`mb_directions()`), you'd pass origin/destination pairs. Pay attention to the stop sequence: spopt gives you the optimal order, and the routing engine gives you the road geometry to draw.
 
 ## TSP vs VRP: when to use which
 
@@ -399,6 +457,7 @@ The balancing phase only runs when `method = "2-opt"` (the default). It targets 
 | Multiple drivers, capacity limits | `route_vrp(demand_col, vehicle_capacity)` | Fleet optimization |
 | Fixed fleet size | `route_vrp(n_vehicles = 3)` | Constrained fleet |
 | Shift time limits | `route_vrp(max_route_time = 90)` | Per-route duration cap |
+| Customer availability | `route_vrp(earliest, latest)` | Time window constraints |
 
 For most delivery and field service problems, start with `route_tsp()` to understand the single-vehicle baseline, then move to `route_vrp()` when you need to split work across a fleet.
 

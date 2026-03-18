@@ -1,5 +1,6 @@
 #' @export
 print.spopt_tsp <- function(x, ...) {
+  if (!inherits(x, "sf")) return(NextMethod())
   meta <- attr(x, "spopt")
   cat(sprintf("TSP route: %d locations, %s tour\n",
               meta$n_locations, meta$route_type))
@@ -14,6 +15,7 @@ print.spopt_tsp <- function(x, ...) {
 
 #' @export
 print.spopt_vrp <- function(x, ...) {
+  if (!inherits(x, "sf")) return(NextMethod())
   meta <- attr(x, "spopt")
   cat(sprintf("VRP routes: %d locations, %d vehicles (depot: %d)\n",
               meta$n_locations, meta$n_vehicles, meta$depot))
@@ -26,6 +28,9 @@ print.spopt_vrp <- function(x, ...) {
   }
   if (!is.null(meta$max_route_time)) {
     constraints <- c(constraints, sprintf("Max route time: %.0f", meta$max_route_time))
+  }
+  if (isTRUE(meta$has_time_windows)) {
+    constraints <- c(constraints, "Time windows: active")
   }
   if (!is.null(meta$balance)) {
     bal_str <- sprintf("Balance: %s (%d move%s)",
@@ -88,6 +93,10 @@ summary.spopt_vrp <- function(object, ...) {
     tbl$Time <- meta$vehicle_times
   }
   print(tbl, row.names = FALSE)
+
+  if (show_time) {
+    cat("\n  Cost = matrix objective (travel only); Time = travel + service + waiting\n")
+  }
 
   invisible(object)
 }

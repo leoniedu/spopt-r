@@ -269,7 +269,7 @@ test_that("rust_tsp and rust_vrp validate inputs with clean R errors", {
     error = identity
   )
   vrp_err <- tryCatch(
-    rust_vrp(m, -1L, c(0, 1, 1), 10, 1L, "savings", NULL, NULL, FALSE),
+    rust_vrp(m, -1L, c(0, 1, 1), 10, 1L, "savings", NULL, NULL, FALSE, NULL, NULL),
     error = identity
   )
 
@@ -289,7 +289,7 @@ test_that("rust_vrp validates demands length without panicking", {
   ), 3, 3, byrow = TRUE)
 
   err <- tryCatch(
-    rust_vrp(m, 0L, c(0, 1), 10, NULL, "savings", NULL, NULL, FALSE),
+    rust_vrp(m, 0L, c(0, 1), 10, NULL, "savings", NULL, NULL, FALSE, NULL, NULL),
     error = identity
   )
   expect_s3_class(err, "error")
@@ -306,7 +306,7 @@ test_that("rust_vrp errors on infeasible max_vehicles + max_route_time", {
   # max_route_time=18 with max_vehicles=2: solver can't fit 6 customers in 2 routes
   err <- tryCatch(
     rust_vrp(m, 0L, c(0, 1, 1, 1, 1, 1, 1), 100, 2L, "2-opt",
-             rep(0, 7), 18, FALSE),
+             rep(0, 7), 18, FALSE, NULL, NULL),
     error = identity
   )
   expect_s3_class(err, "error")
@@ -723,4 +723,279 @@ test_that("vrp local search (2-opt + or-opt) improves on savings construction", 
   expect_true(meta_opt$total_cost <= meta_savings$total_cost + 1e-6)
   # And improvement_pct should be non-negative
   expect_true(meta_opt$improvement_pct >= 0)
+})
+
+# ---- VRP time windows ----
+
+test_that("vrp basic time windows: arrivals within windows", {
+  skip_if_not_installed("sf")
+
+  # Depot at 0, 4 customers in a line
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, 2, 3, 4), y = rep(0, 5),
+               demand = c(0, 5, 5, 5, 5)),
+    coords = c("x", "y")
+  )
+  m <- as.matrix(dist(cbind(c(0, 1, 2, 3, 4), 0)))
+
+  result <- route_vrp(pts, depot = 1, demand_col = "demand",
+                       vehicle_capacity = 100, cost_matrix = m,
+                       earliest = c(0, 0, 0, 0, 0),
+                       latest = c(100, 10, 10, 10, 10))
+  meta <- attr(result, "spopt")
+
+  expect_true(meta$has_time_windows)
+  # All arrivals should be within windows
+  for (i in 2:5) {
+    if (!is.na(result$.arrival_time[i])) {
+      expect_true(result$.arrival_time[i] >= 0 - 1e-6)
+      expect_true(result$.arrival_time[i] <= 10 + 1e-6)
+    }
+  }
+  # Depot should be NA
+  expect_true(is.na(result$.arrival_time[1]))
+})
+
+test_that("vrp method=savings with windows respects feasibility on merges", {
+  skip_if_not_installed("sf")
+
+  # Depot at 0, customer 2 at x=1 (window 10-12), customer 3 at x=2 (window 0-3)
+  # Each individually feasible. But merged route [2,3]:
+  # depart depot at 0, travel 1 to cust2, wait until 10, service, depart 10,
+  # travel 1 to cust3, arrive 11 > latest 3 -> infeasible
+  # So savings-only must keep them on separate routes
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, 2), y = rep(0, 3),
+               demand = c(0, 1, 1)),
+    coords = c("x", "y")
+  )
+  m <- as.matrix(dist(cbind(c(0, 1, 2), 0)))
+
+  result <- route_vrp(pts, depot = 1, demand_col = "demand",
+                       vehicle_capacity = 100, cost_matrix = m,
+                       method = "savings",
+                       earliest = c(0, 10, 0),
+                       latest = c(100, 12, 3))
+  meta <- attr(result, "spopt")
+
+  # Must use 2 vehicles because the merge is infeasible
+  expect_equal(meta$n_vehicles, 2)
+  # All arrivals should be within windows
+  for (i in 2:3) {
+    if (!is.na(result$.arrival_time[i])) {
+      expect_true(result$.arrival_time[i] <= c(12, 3)[i - 1] + 1e-6)
+    }
+  }
+})
+
+test_that("vrp windows + max_route_time catches waiting-induced infeasibility on merge", {
+  skip_if_not_installed("sf")
+
+  # Two customers, each individually feasible:
+  # Cust 2: dist 1, window 3-10, alone: depart 0, travel 1, wait until 3, return 1 = route_time 4
+  # Cust 3: dist 1, window 3-10, alone: depart 0, travel 1, wait until 3, return 1 = route_time 4
+  # max_route_time = 5: both individually ok (4 <= 5)
+  # Merged [2, 3]: depart 0, travel 1 to cust2, wait until 3, depart 3,
+  #   travel 2 to cust3, arrive 5, service_start = max(5, 3) = 5, depart 5,
+  #   travel 1 to depot = 6. route_time = 6 > 5.
+  # So merge is infeasible due to cumulative waiting.
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, -1), y = rep(0, 3),
+               demand = c(0, 1, 1)),
+    coords = c("x", "y")
+  )
+  m <- as.matrix(dist(cbind(c(0, 1, -1), 0)))
+
+  result <- route_vrp(pts, depot = 1, demand_col = "demand",
+                       vehicle_capacity = 100, cost_matrix = m,
+                       earliest = c(0, 3, 3),
+                       latest = c(100, 10, 10),
+                       max_route_time = 5)
+  meta <- attr(result, "spopt")
+
+  # Must use 2 vehicles because merged route exceeds max_route_time with waiting
+  expect_equal(meta$n_vehicles, 2)
+})
+
+test_that("vrp infeasible time window errors", {
+  skip_if_not_installed("sf")
+
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 10, 1), y = rep(0, 3),
+               demand = c(0, 1, 1)),
+    coords = c("x", "y")
+  )
+  m <- as.matrix(dist(cbind(c(0, 10, 1), 0)))
+
+  # Customer 2 at distance 10 but window closes at 5
+  expect_error(
+    route_vrp(pts, depot = 1, demand_col = "demand",
+              vehicle_capacity = 100, cost_matrix = m,
+              earliest = c(0, 0, 0),
+              latest = c(100, 5, 100)),
+    "infeasible"
+  )
+})
+
+test_that("vrp windows + capacity both respected", {
+  skip_if_not_installed("sf")
+
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, 2, 3, 4), y = rep(0, 5),
+               demand = c(0, 10, 10, 10, 10)),
+    coords = c("x", "y")
+  )
+  m <- as.matrix(dist(cbind(c(0, 1, 2, 3, 4), 0)))
+
+  result <- route_vrp(pts, depot = 1, demand_col = "demand",
+                       vehicle_capacity = 20, cost_matrix = m,
+                       earliest = c(0, 0, 0, 0, 0),
+                       latest = c(100, 50, 50, 50, 50))
+  meta <- attr(result, "spopt")
+
+  # Capacity respected
+  expect_true(all(meta$vehicle_loads <= 20))
+  # All customers assigned
+  expect_true(all(result$.vehicle[-1] > 0))
+})
+
+test_that("vrp windows + max_route_time with waiting forces split", {
+  skip_if_not_installed("sf")
+
+  # Customer at distance 1, but window doesn't open until t=10
+  # Round trip = 2 travel + 10 waiting = 12 total
+  # With max_route_time = 15, one route can handle 1 customer + waiting
+  # Two customers both needing waiting: 2 travel + 10 wait + 1 travel + 10 wait + 2 return
+  # That's way over 15, so must split
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, -1), y = rep(0, 3),
+               demand = c(0, 1, 1)),
+    coords = c("x", "y")
+  )
+  m <- as.matrix(dist(cbind(c(0, 1, -1), 0)))
+
+  result <- route_vrp(pts, depot = 1, demand_col = "demand",
+                       vehicle_capacity = 100, cost_matrix = m,
+                       earliest = c(0, 10, 10),
+                       latest = c(100, 20, 20),
+                       max_route_time = 15)
+  meta <- attr(result, "spopt")
+
+  # Should need 2 vehicles because of waiting
+  expect_equal(meta$n_vehicles, 2)
+})
+
+test_that("vrp waiting-only infeasibility caught by pre-check", {
+  skip_if_not_installed("sf")
+
+  # Customer 2 at distance 1 (round trip travel = 2)
+  # But window opens at t=10, so waiting = 10
+  # Route time = 10 wait + 0 service + 1 return = 12 total
+  # max_route_time = 5: travel alone is fine (2), but waiting makes it 12
+  # Need 3 locations for VRP (depot + 2 customers)
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, 0.5), y = c(0, 0, 0),
+               demand = c(0, 1, 1)),
+    coords = c("x", "y")
+  )
+  m <- as.matrix(dist(cbind(c(0, 1, 0.5), 0)))
+
+  expect_error(
+    route_vrp(pts, depot = 1, demand_col = "demand",
+              vehicle_capacity = 100, cost_matrix = m,
+              earliest = c(0, 10, 0),
+              latest = c(100, 20, 100),
+              max_route_time = 5),
+    "unreachable|route time"
+  )
+})
+
+test_that("vrp windows + balance produces warning and is ignored", {
+  skip_if_not_installed("sf")
+
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, 2, 3), y = rep(0, 4),
+               demand = c(0, 5, 5, 5)),
+    coords = c("x", "y")
+  )
+  m <- as.matrix(dist(cbind(c(0, 1, 2, 3), 0)))
+
+  expect_warning(
+    result <- route_vrp(pts, depot = 1, demand_col = "demand",
+                         vehicle_capacity = 100, cost_matrix = m,
+                         earliest = c(0, 0, 0, 0),
+                         latest = c(100, 50, 50, 50),
+                         balance = "time"),
+    "balance is ignored"
+  )
+
+  meta <- attr(result, "spopt")
+  expect_null(meta$balance)
+})
+
+test_that("vrp arrival/departure output with windows", {
+  skip_if_not_installed("sf")
+
+  pts <- sf::st_as_sf(
+    data.frame(x = c(0, 1, 2, 3), y = rep(0, 4),
+               demand = c(0, 5, 5, 5)),
+    coords = c("x", "y")
+  )
+  m <- as.matrix(dist(cbind(c(0, 1, 2, 3), 0)))
+
+  result <- route_vrp(pts, depot = 1, demand_col = "demand",
+                       vehicle_capacity = 100, cost_matrix = m,
+                       earliest = c(0, 0, 0, 0),
+                       latest = c(100, 50, 50, 50),
+                       service_time = c(0, 2, 2, 2))
+
+  # Columns exist
+  expect_true(".arrival_time" %in% names(result))
+  expect_true(".departure_time" %in% names(result))
+  # Depot is NA
+  expect_true(is.na(result$.arrival_time[1]))
+  expect_true(is.na(result$.departure_time[1]))
+  # Non-depot arrivals are within windows
+  for (i in 2:4) {
+    expect_true(result$.arrival_time[i] >= 0 - 1e-6)
+    expect_true(result$.arrival_time[i] <= 50 + 1e-6)
+  }
+})
+
+test_that("rust_vrp validates bad earliest/latest input without panicking", {
+  m <- matrix(c(
+    0, 1, 2,
+    1, 0, 1,
+    2, 1, 0
+  ), 3, 3, byrow = TRUE)
+
+  # Wrong length
+  err1 <- tryCatch(
+    rust_vrp(m, 0L, c(0, 1, 1), 10, NULL, "savings", NULL, NULL, FALSE,
+             c(0, 0), c(100, 100)),
+    error = identity
+  )
+  expect_s3_class(err1, "error")
+  expect_match(conditionMessage(err1), "earliest.*length")
+  expect_false(grepl("panicked", conditionMessage(err1), fixed = TRUE))
+
+  # earliest > latest
+  err2 <- tryCatch(
+    rust_vrp(m, 0L, c(0, 1, 1), 10, NULL, "savings", NULL, NULL, FALSE,
+             c(0, 10, 0), c(100, 5, 100)),
+    error = identity
+  )
+  expect_s3_class(err2, "error")
+  expect_match(conditionMessage(err2), "earliest.*greater")
+  expect_false(grepl("panicked", conditionMessage(err2), fixed = TRUE))
+
+  # Individually infeasible customer (window too tight for travel distance)
+  err3 <- tryCatch(
+    rust_vrp(m, 0L, c(0, 1, 1), 10, NULL, "savings", NULL, NULL, FALSE,
+             c(0, 10, 0), c(100, 12, 1)),
+    error = identity
+  )
+  expect_s3_class(err3, "error")
+  expect_match(conditionMessage(err3), "infeasible")
+  expect_false(grepl("panicked", conditionMessage(err3), fixed = TRUE))
 })

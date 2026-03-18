@@ -255,8 +255,10 @@ rust_tsp <- function(cost_matrix, start, end, method, earliest, latest, service_
 #' @param service_times Optional service time at each stop (NULL for zero)
 #' @param max_route_time Optional maximum total time per route (NULL for unlimited)
 #' @param balance_time Whether to run route-time balancing phase
+#' @param earliest Optional earliest arrival times at each stop
+#' @param latest Optional latest arrival times at each stop
 #' @return List with vehicle assignments, costs, and route details
 #' @export
-rust_vrp <- function(cost_matrix, depot, demands, capacity, max_vehicles, method, service_times, max_route_time, balance_time) .Call(wrap__rust_vrp, cost_matrix, depot, demands, capacity, max_vehicles, method, service_times, max_route_time, balance_time)
+rust_vrp <- function(cost_matrix, depot, demands, capacity, max_vehicles, method, service_times, max_route_time, balance_time, earliest, latest) .Call(wrap__rust_vrp, cost_matrix, depot, demands, capacity, max_vehicles, method, service_times, max_route_time, balance_time, earliest, latest)
 
 # nolint end

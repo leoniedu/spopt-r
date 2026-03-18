@@ -22,6 +22,8 @@ Read through these vignettes to learn how to use the package:
 
 - [Travel-time cost matrices](https://walker-data.com/spopt-r/articles/travel-time-matrices.html)
 
+- [Routing optimization](https://walker-data.com/spopt-r/articles/routing.html)
+
 ## Support and how to learn more
 
 If you find this project useful in your work and would like to ensure continued development of the package, you can provide support in the following ways:

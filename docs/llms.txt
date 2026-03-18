@@ -1,0 +1,150 @@
+# spopt
+
+The **spopt** R package provides R-native implementations of spatial
+optimization algorithms for regionalization, facility location, and
+market analysis. Inspired by [Python’s PySAL
+spopt](https://pysal.org/spopt/), the package brings these powerful
+algorithms to R users with an sf-first API and a Rust backend for
+performance.
+
+Install from r-universe:
+
+``` r
+install.packages('spopt', repos = c('https://walkerke.r-universe.dev', 'https://cloud.r-project.org'))
+```
+
+For developers who need to build from source (requires Rust), see
+[CONTRIBUTING.md](https://walker-data.com/spopt-r/CONTRIBUTING.md).
+
+Read through these vignettes to learn how to use the package:
+
+- [Getting started with
+  **spopt**](https://walker-data.com/spopt-r/articles/getting-started.html)
+
+- [Regionalization](https://walker-data.com/spopt-r/articles/regionalization.html)
+
+- [Facility location
+  problems](https://walker-data.com/spopt-r/articles/facility-location.html)
+
+- [Huff model](https://walker-data.com/spopt-r/articles/huff-model.html)
+
+- [Travel-time cost
+  matrices](https://walker-data.com/spopt-r/articles/travel-time-matrices.html)
+
+- [Routing
+  optimization](https://walker-data.com/spopt-r/articles/routing.html)
+
+## Support and how to learn more
+
+If you find this project useful in your work and would like to ensure
+continued development of the package, you can provide support in the
+following ways:
+
+- [Chip in some funds to support package development via
+  PayPal](https://www.paypal.com/paypalme/walkerdata/);
+- Set up a consulting engagement or workshop through Walker Data to help
+  you implement **spopt** in your project. Send a note to
+  <kyle@walker-data.com> if you are interested;
+- File an issue - or even better, a pull request - at
+  <https://github.com/walkerke/spopt-r/issues>.
+
+To stay on top of package updates / new features and to get information
+about trainings, [be sure to sign up for the Walker Data mailing list
+here](https://walker-data.us15.list-manage.com/subscribe?u=1829a68a5eda3d301119fdcd6&id=c4a53d2961).
+
+# Package index
+
+## Regionalization
+
+Algorithms for spatially-constrained clustering
+
+- [`skater()`](https://walker-data.com/spopt-r/reference/skater.md) :
+  SKATER Spatial Clustering
+- [`azp()`](https://walker-data.com/spopt-r/reference/azp.md) :
+  Automatic Zoning Procedure (AZP)
+- [`max_p_regions()`](https://walker-data.com/spopt-r/reference/max_p_regions.md)
+  : Max-P Regions
+- [`spenc()`](https://walker-data.com/spopt-r/reference/spenc.md) :
+  Spatially-Encouraged Spectral Clustering (SPENC)
+- [`ward_spatial()`](https://walker-data.com/spopt-r/reference/ward_spatial.md)
+  : Ward Spatial Clustering
+
+## Facility Location
+
+Optimal facility siting algorithms
+
+- [`p_median()`](https://walker-data.com/spopt-r/reference/p_median.md)
+  : P-Median Problem
+- [`p_center()`](https://walker-data.com/spopt-r/reference/p_center.md)
+  : P-Center Problem
+- [`p_dispersion()`](https://walker-data.com/spopt-r/reference/p_dispersion.md)
+  : P-Dispersion Problem
+- [`lscp()`](https://walker-data.com/spopt-r/reference/lscp.md) :
+  Location Set Covering Problem (LSCP)
+- [`mclp()`](https://walker-data.com/spopt-r/reference/mclp.md) :
+  Maximum Coverage Location Problem (MCLP)
+- [`cflp()`](https://walker-data.com/spopt-r/reference/cflp.md) :
+  Capacitated Facility Location Problem (CFLP)
+- [`frlm()`](https://walker-data.com/spopt-r/reference/frlm.md) : Flow
+  Refueling Location Model (FRLM)
+
+## Route Optimization
+
+Single- and multi-vehicle routing
+
+- [`route_tsp()`](https://walker-data.com/spopt-r/reference/route_tsp.md)
+  : Traveling Salesman Problem (TSP)
+- [`route_vrp()`](https://walker-data.com/spopt-r/reference/route_vrp.md)
+  : Vehicle Routing Problem (VRP)
+
+## Market Analysis
+
+Market share and competition modeling
+
+- [`huff()`](https://walker-data.com/spopt-r/reference/huff.md) : Huff
+  Model for Market Share Analysis
+
+## Utilities
+
+Helper functions for spatial optimization
+
+- [`sp_weights()`](https://walker-data.com/spopt-r/reference/sp_weights.md)
+  : Create spatial weights from an sf object
+- [`distance_matrix()`](https://walker-data.com/spopt-r/reference/distance_matrix.md)
+  : Compute distance matrix between sf objects
+- [`second_areal_moment()`](https://walker-data.com/spopt-r/reference/second_areal_moment.md)
+  : Second areal moment (i.e., second moment of inertia)
+- [`nmi()`](https://walker-data.com/spopt-r/reference/nmi.md) :
+  Normalized moment of inertia (NMI)
+
+## Data
+
+Example datasets
+
+- [`tarrant_travel_times`](https://walker-data.com/spopt-r/reference/tarrant_travel_times.md)
+  : Tarrant County Travel Time Matrix Example Data
+- [`delivery_data`](https://walker-data.com/spopt-r/reference/delivery_data.md)
+  : Delivery routing data for Fort Worth, TX
+
+# Articles
+
+### Getting Started
+
+- [Getting started with
+  spopt](https://walker-data.com/spopt-r/articles/getting-started.md):
+
+### Core Algorithms
+
+- [Regionalization with
+  spopt](https://walker-data.com/spopt-r/articles/regionalization.md):
+- [Solving facility location problems with
+  spopt](https://walker-data.com/spopt-r/articles/facility-location.md):
+- [Market analysis with the Huff
+  model](https://walker-data.com/spopt-r/articles/huff-model.md):
+- [Route optimization with
+  spopt](https://walker-data.com/spopt-r/articles/routing.md):
+
+### Advanced Topics
+
+- [Travel-time cost
+  matrices](https://walker-data.com/spopt-r/articles/travel-time-matrices.md):

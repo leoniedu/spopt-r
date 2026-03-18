@@ -1,0 +1,448 @@
+# Regionalization with spopt
+
+*Regionalization* refers to the process of grouping smaller geographic
+units into larger, spatially contiguous regions. Unlike standard
+clustering methods, regionalization algorithms enforce that resulting
+regions form connected geographic areas - you can’t have a region with
+disconnected pieces scattered across the map.
+
+This vignette walks through spopt’s regionalization algorithms using
+Census tract data from Dallas, Texas. We’ll explore how to build regions
+that minimize internal heterogeneity while maintaining spatial
+contiguity and meeting population thresholds.
+
+## When would you use regionalization?
+
+Regionalization solves problems across many fields:
+
+- **Political redistricting**: Building compact, contiguous districts
+  that balance population
+- **Market segmentation**: Creating sales territories with similar
+  customer characteristics
+- **Health planning**: Aggregating small-area data while preserving
+  spatial relationships
+- **Urban planning**: Delineating neighborhoods based on socioeconomic
+  similarity
+- **Census data analysis**: Addressing differential privacy concerns by
+  aggregating blocks into larger areas
+
+## Getting Census data
+
+Let’s start by pulling some demographic data for Census tracts in Dallas
+County, Texas. We’ll use the tidycensus package to get population,
+median household income, and percentage with a bachelor’s degree -
+variables that might define meaningful neighborhood clusters.
+
+``` r
+library(spopt)
+library(tidycensus)
+library(tidyverse)
+library(sf)
+library(mapgl)
+
+dallas <- get_acs(
+  geography = "tract",
+  variables = c(
+    pop = "B01003_001",
+    income = "B19013_001",
+    bachelors = "DP02_0068P"
+  ),
+  state = "TX",
+  county = "Dallas",
+  geometry = TRUE,
+  year = 2023,
+  output = "wide"
+) |>
+  filter(!is.na(incomeE), !is.na(bachelorsE))
+```
+
+We now have 642 Census tracts with population, income, and education
+data. Let’s take a quick look at the geographic distribution of median
+household income:
+
+``` r
+maplibre_view(dallas, column = "incomeE")
+```
+
+The map reveals the familiar spatial pattern of income inequality in
+Dallas - higher incomes concentrated in the Park Cities north of
+downtown, with lower incomes in the southern part of the county.
+
+## Max-P regionalization
+
+The *Max-P* algorithm ([Duque, Anselin, and Rey 2012](#ref-duque2012))
+finds the maximum number of regions such that each region exceeds a
+specified threshold while minimizing within-region heterogeneity. This
+is particularly useful when you need regions that meet minimum
+population requirements for statistical reliability. Recent extensions
+support compactness constraints ([Feng, Rey, and Wei
+2022](#ref-feng2022)) and improved efficiency ([Wei, Rey, and Knaap
+2021](#ref-wei2021)).
+
+Let’s create regions where each must contain at least 50,000 people:
+
+``` r
+maxp_result <- max_p_regions(
+  dallas,
+  attrs = c("incomeE", "bachelorsE"),
+  threshold_var = "popE",
+  threshold = 50000,
+  n_iterations = 100,
+  seed = 1983
+)
+
+maplibre_view(maxp_result, column = ".region", legend = FALSE)
+```
+
+Let’s step through the key parameters:
+
+- `attrs`: The variables used to measure similarity. Tracts with similar
+  income and education levels will be grouped together.
+- `threshold_var`: The variable that must meet the minimum threshold
+  (population in this case).
+- `threshold`: Each region must have at least this many people.
+- `n_iterations`: The algorithm uses a tabu search heuristic; more
+  iterations generally yield better solutions.
+- `seed`: For reproducibility, since the algorithm has stochastic
+  elements.
+
+The result is an sf object with a new `.region` column indicating each
+tract’s assigned region. The algorithm found 41 regions, each with at
+least 50,000 residents.
+
+You can access metadata about the solution through the `spopt`
+attribute:
+
+``` r
+attr(maxp_result, "spopt")
+```
+
+    $algorithm
+    [1] "max_p"
+
+    $n_regions
+    [1] 41
+
+    $objective
+    [1] 590.8766
+
+    $threshold_var
+    [1] "popE"
+
+    $threshold
+    [1] 50000
+
+    $region_stats
+       region n_areas threshold_sum meets_threshold
+    1      32      21         72029            TRUE
+    2       3      15         53946            TRUE
+    3      23      21         63065            TRUE
+    4      30      17         62150            TRUE
+    5      24      26         71536            TRUE
+    6      37      21         83805            TRUE
+    7      38      18         50354            TRUE
+    8      29      15         66966            TRUE
+    9      35      15         56258            TRUE
+    10     16      11         53648            TRUE
+    11      1      14         56269            TRUE
+    12      8      18         52794            TRUE
+    13     28      15         55143            TRUE
+    14     22      15         57214            TRUE
+    15     19      13         54953            TRUE
+    16      9      13         57807            TRUE
+    17     27      13         59039            TRUE
+    18     12      15         76933            TRUE
+    19      2      12         75397            TRUE
+    20      7      14         56740            TRUE
+    21      6      16         61365            TRUE
+    22     20      12         55996            TRUE
+    23     39      15         54040            TRUE
+    24     25      13         56181            TRUE
+    25     36      15         66457            TRUE
+    26     21      12         59392            TRUE
+    27     40      16         59179            TRUE
+    28     31      24        102478            TRUE
+    29     34      19         61859            TRUE
+    30     17      19         61110            TRUE
+    31     14      18         71146            TRUE
+    32     26      13         56329            TRUE
+    33     10      14         62108            TRUE
+    34     15      14         54934            TRUE
+    35      4      13         71990            TRUE
+    36      5      18         75197            TRUE
+    37     13      14         70617            TRUE
+    38     41      12         64772            TRUE
+    39     11      12         54340            TRUE
+    40     33      18         78145            TRUE
+    41     18      13         65175            TRUE
+
+    $solve_time
+    [1] 0.07556581
+
+    $scaled
+    [1] TRUE
+
+    $n_iterations
+    [1] 100
+
+    $n_sa_iterations
+    [1] 100
+
+    $compact
+    [1] FALSE
+
+    $compact_weight
+    [1] 0.5
+
+    $homogeneous
+    [1] TRUE
+
+    $mean_compactness
+    NULL
+
+    $region_compactness
+    NULL
+
+### Spatial weights
+
+By default, all regionalization functions use **queen contiguity** - two
+tracts are neighbors if they share any boundary point (including
+corners). You can also use **rook contiguity**, where tracts must share
+an edge to be neighbors:
+
+``` r
+maxp_rook <- max_p_regions(
+  dallas,
+  attrs = c("incomeE", "bachelorsE"),
+  threshold_var = "popE",
+  threshold = 50000,
+  weights = "rook",
+  n_iterations = 100,
+  seed = 1983
+)
+```
+
+For more control, you can specify weights as a list:
+
+- `list(type = "knn", k = 6)`: K-nearest neighbors (useful for point
+  data or ensuring connectivity)
+- `list(type = "distance", d = 5000)`: Distance-based weights (units
+  match your CRS)
+
+You can also pass an `nb` object created with spdep or spopt’s
+[`sp_weights()`](https://walker-data.com/spopt-r/reference/sp_weights.md)
+function.
+
+### Compact regions
+
+For applications like sales territories or electoral districts, you may
+want regions with compact, regular shapes. The `compact` parameter
+optimizes for compactness in addition to attribute homogeneity:
+
+``` r
+maxp_compact <- max_p_regions(
+  dallas,
+  attrs = c("incomeE", "bachelorsE"),
+  threshold_var = "popE",
+  threshold = 50000,
+  weights = "rook",
+  compact = TRUE,
+  compact_weight = 0.5,
+  n_iterations = 100,
+  seed = 1983
+)
+
+maplibre_view(maxp_compact, column = ".region", legend = FALSE)
+```
+
+The `compact_weight` parameter (0 to 1) controls the trade-off between
+attribute homogeneity and geometric compactness. Higher values
+prioritize compact shapes. The parameter `compact_metric` provides a
+choice between two compactness metrics. The default, “centroid
+dispersion”, is appropriate for both polygons (e.g., state borders) and
+point geometries (e.g., store locations). The alternative option, “NMI”
+(normalized moment of inertia), is the original metric proposed by Feng,
+Rey, and Wei ([2022](#ref-feng2022)), and is appropriate only for
+polygons.
+
+## SKATER algorithm
+
+*SKATER* (Spatial K’luster Analysis by Tree Edge Removal) ([Assunção et
+al. 2006](#ref-assuncao2006)) takes a different approach. It first
+builds a minimum spanning tree connecting all tracts based on their
+attribute similarity, then iteratively removes edges to create clusters.
+The algorithm is fast and produces spatially coherent regions.
+
+``` r
+skater_result <- skater(
+  dallas,
+  attrs = c("incomeE", "bachelorsE"),
+  n_regions = 6,
+  seed = 1983
+)
+
+maplibre_view(skater_result, column = ".region", legend = FALSE)
+```
+
+SKATER supports a `floor` and `floor_value` parameter if you need
+minimum population constraints:
+
+``` r
+skater_constrained <- skater(
+  dallas,
+  attrs = c("incomeE", "bachelorsE"),
+  n_regions = 6,
+  floor = "popE",
+  floor_value = 150000,
+  seed = 1983
+)
+```
+
+## AZP: Automatic Zoning Procedure
+
+The *Automatic Zoning Procedure* (AZP) ([Openshaw
+1977](#ref-openshaw1977); [Openshaw and Rao 1995](#ref-openshaw1995))
+uses local search optimization with three algorithm variants: basic
+(greedy), tabu search, and simulated annealing.
+
+``` r
+azp_result <- azp(
+  dallas,
+  attrs = c("incomeE", "bachelorsE"),
+  n_regions = 20,
+  method = "tabu",
+  tabu_length = 10,
+  max_iterations = 100,
+  seed = 1983
+)
+
+maplibre_view(azp_result, column = ".region", legend = FALSE)
+```
+
+The `method` parameter controls which algorithm variant to use:
+
+- `"basic"`: Simple greedy local search (fastest)
+- `"tabu"`: Tabu search, which maintains a list of recent moves to avoid
+  getting stuck in local optima
+- `"sa"`: Simulated annealing, which accepts some worse solutions early
+  to explore more of the solution space
+
+For large problems, you may also want to use the simulated annealing
+variant:
+
+``` r
+azp_sa <- azp(
+  dallas,
+  attrs = c("incomeE", "bachelorsE"),
+  n_regions = 20,
+  method = "sa",
+  cooling_rate = 0.85,
+  max_iterations = 100,
+  seed = 1983
+)
+```
+
+## SPENC: Spatially-Encouraged Spectral Clustering
+
+*SPENC* ([Wolf 2021](#ref-wolf2021)) combines spectral clustering with
+spatial constraints. It uses a radial basis function (RBF) kernel to
+measure attribute similarity and incorporates spatial connectivity into
+the spectral embedding. This approach can find clusters with complex,
+non-convex shapes that other methods might miss.
+
+``` r
+spenc_result <- spenc(
+  dallas,
+  attrs = c("incomeE", "bachelorsE"),
+  n_regions = 15,
+  gamma = 1.0,
+  seed = 1983
+)
+
+maplibre_view(spenc_result, column = ".region", legend = FALSE)
+```
+
+The `gamma` parameter controls the RBF kernel bandwidth - higher values
+create “tighter” clusters in attribute space.
+
+## Ward spatial clustering
+
+Spatially-constrained *Ward* clustering is a hierarchical method that
+only allows merging adjacent clusters. At each step, it merges the pair
+of adjacent clusters that minimizes the increase in total within-cluster
+variance.
+
+``` r
+ward_result <- ward_spatial(
+  dallas,
+  attrs = c("incomeE", "bachelorsE"),
+  n_regions = 15
+)
+
+maplibre_view(ward_result, column = ".region", legend = FALSE)
+```
+
+Ward clustering is deterministic (no random seed needed) and tends to
+produce compact, roughly equal-sized regions.
+
+## Choosing an algorithm
+
+Each regionalization algorithm has strengths for different scenarios:
+
+| Algorithm | Best for | Key features |
+|----|----|----|
+| **Max-P** | Population thresholds | Maximizes number of regions meeting constraints |
+| **SKATER** | Fast, interpretable results | Tree-based, good for large datasets |
+| **AZP** | High-quality solutions | Multiple optimization variants |
+| **SPENC** | Complex cluster shapes | Spectral embedding with spatial constraints |
+| **Ward** | Deterministic, balanced regions | Hierarchical, no tuning required |
+
+For most applications, I’d recommend starting with **Max-P** if you have
+population constraints, or **SKATER** for a quick first pass. If you
+want to explore the solution space more thoroughly, try **AZP** with
+tabu search or simulated annealing.
+
+## Next steps
+
+- [Facility
+  Location](https://walker-data.com/spopt-r/articles/facility-location.md) -
+  Solve location-allocation problems
+- [Huff Model](https://walker-data.com/spopt-r/articles/huff-model.md) -
+  Model market share and retail competition
+- [Travel-Time Cost
+  Matrices](https://walker-data.com/spopt-r/articles/travel-time-matrices.md) -
+  Use real-world travel times
+
+## References
+
+Assunção, R. M., M. C. Neves, G. Câmara, and C. da Costa Freitas. 2006.
+“Efficient Regionalization Techniques for Socio-Economic Geographical
+Units Using Minimum Spanning Trees.” *International Journal of
+Geographical Information Science* 20 (7): 797–811.
+<https://doi.org/10.1080/13658810600665111>.
+
+Duque, J. C., L. Anselin, and S. J. Rey. 2012. “The Max-p-Regions
+Problem.” *Journal of Regional Science* 52 (3): 397–419.
+<https://doi.org/10.1111/j.1467-9787.2011.00743.x>.
+
+Feng, X., S. Rey, and R. Wei. 2022. “The Max-p-Compact-Regions Problem.”
+*Transactions in GIS* 26: 717–34. <https://doi.org/10.1111/tgis.12874>.
+
+Openshaw, S. 1977. “A Geographical Solution to Scale and Aggregation
+Problems in Region-Building, Partitioning and Spatial Modelling.”
+*Transactions of the Institute of British Geographers* 2 (4): 459–72.
+<https://doi.org/10.2307/622300>.
+
+Openshaw, S., and L. Rao. 1995. “Algorithms for Reengineering 1991
+Census Geography.” *Environment and Planning A* 27 (3): 425–46.
+<https://doi.org/10.1068/a270425>.
+
+Wei, R., S. Rey, and E. Knaap. 2021. “Efficient Regionalization for
+Spatially Explicit Neighborhood Delineation.” *International Journal of
+Geographical Information Science* 35 (1): 135–51.
+<https://doi.org/10.1080/13658816.2020.1759806>.
+
+Wolf, L. J. 2021. “Spatially-Encouraged Spectral Clustering: A Technique
+for Blending Map Typologies and Regionalization.” *International Journal
+of Geographical Information Science* 35 (11): 2356–73.
+<https://doi.org/10.1080/13658816.2021.1934475>.

@@ -13,7 +13,9 @@ rust_vrp(
   method,
   service_times,
   max_route_time,
-  balance_time
+  balance_time,
+  earliest,
+  latest
 )
 }
 \arguments{
@@ -34,6 +36,10 @@ rust_vrp(
 \item{max_route_time}{Optional maximum total time per route (NULL for unlimited)}
 
 \item{balance_time}{Whether to run route-time balancing phase}
+
+\item{earliest}{Optional earliest arrival times at each stop}
+
+\item{latest}{Optional latest arrival times at each stop}
 }
 \value{
 List with vehicle assignments, costs, and route details

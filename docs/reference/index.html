@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">spopt</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -23,6 +23,7 @@
     <li><a class="dropdown-item" href="../articles/regionalization.html">Regionalization</a></li>
     <li><a class="dropdown-item" href="../articles/facility-location.html">Facility Location</a></li>
     <li><a class="dropdown-item" href="../articles/huff-model.html">Huff Model</a></li>
+    <li><a class="dropdown-item" href="../articles/routing.html">Route Optimization</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><a class="dropdown-item" href="../articles/travel-time-matrices.html">Travel-Time Cost Matrices</a></li>
   </ul></li>
@@ -44,8 +45,7 @@
 
       <div class="section-desc"><p>Algorithms for spatially-constrained clustering</p></div>
 
-
-    </div><div class="section level2">
+      <dl></dl></div><div class="section level2">
 
 
 
@@ -56,25 +56,29 @@
 
         </dt>
         <dd>SKATER Spatial Clustering</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="azp.html">azp()</a></code>
 
         </dt>
         <dd>Automatic Zoning Procedure (AZP)</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="max_p_regions.html">max_p_regions()</a></code>
 
         </dt>
         <dd>Max-P Regions</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="spenc.html">spenc()</a></code>
 
         </dt>
         <dd>Spatially-Encouraged Spectral Clustering (SPENC)</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="ward_spatial.html">ward_spatial()</a></code>
 
@@ -85,8 +89,7 @@
 
       <div class="section-desc"><p>Optimal facility siting algorithms</p></div>
 
-
-    </div><div class="section level2">
+      <dl></dl></div><div class="section level2">
 
 
 
@@ -97,49 +100,77 @@
 
         </dt>
         <dd>P-Median Problem</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="p_center.html">p_center()</a></code>
 
         </dt>
         <dd>P-Center Problem</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="p_dispersion.html">p_dispersion()</a></code>
 
         </dt>
         <dd>P-Dispersion Problem</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="lscp.html">lscp()</a></code>
 
         </dt>
         <dd>Location Set Covering Problem (LSCP)</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="mclp.html">mclp()</a></code>
 
         </dt>
         <dd>Maximum Coverage Location Problem (MCLP)</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="cflp.html">cflp()</a></code>
 
         </dt>
         <dd>Capacitated Facility Location Problem (CFLP)</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="frlm.html">frlm()</a></code>
 
         </dt>
         <dd>Flow Refueling Location Model (FRLM)</dd>
       </dl></div><div class="section level2">
+      <h2 id="route-optimization">Route Optimization<a class="anchor" aria-label="anchor" href="#route-optimization"></a></h2>
+
+      <div class="section-desc"><p>Single- and multi-vehicle routing</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="route_tsp.html">route_tsp()</a></code>
+
+        </dt>
+        <dd>Traveling Salesman Problem (TSP)</dd>
+
+        <dt>
+
+          <code><a href="route_vrp.html">route_vrp()</a></code>
+
+        </dt>
+        <dd>Vehicle Routing Problem (VRP)</dd>
+      </dl></div><div class="section level2">
       <h2 id="market-analysis">Market Analysis<a class="anchor" aria-label="anchor" href="#market-analysis"></a></h2>
 
       <div class="section-desc"><p>Market share and competition modeling</p></div>
 
-
-    </div><div class="section level2">
+      <dl></dl></div><div class="section level2">
 
 
 
@@ -155,8 +186,7 @@
 
       <div class="section-desc"><p>Helper functions for spatial optimization</p></div>
 
-
-    </div><div class="section level2">
+      <dl></dl></div><div class="section level2">
 
 
 
@@ -167,19 +197,22 @@
 
         </dt>
         <dd>Create spatial weights from an sf object</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="distance_matrix.html">distance_matrix()</a></code>
 
         </dt>
         <dd>Compute distance matrix between sf objects</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="second_areal_moment.html">second_areal_moment()</a></code>
 
         </dt>
         <dd>Second areal moment (i.e., second moment of inertia)</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="nmi.html">nmi()</a></code>
 
@@ -190,8 +223,7 @@
 
       <div class="section-desc"><p>Example datasets</p></div>
 
-
-    </div><div class="section level2">
+      <dl></dl></div><div class="section level2">
 
 
 
@@ -202,6 +234,13 @@
 
         </dt>
         <dd>Tarrant County Travel Time Matrix Example Data</dd>
+
+        <dt>
+
+          <code><a href="delivery_data.html">delivery_data</a></code>
+
+        </dt>
+        <dd>Delivery routing data for Fort Worth, TX</dd>
       </dl></div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>
@@ -212,7 +251,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.9000.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.9000.</p>
 </div>
 
     </footer></div>

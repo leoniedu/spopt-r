@@ -15,7 +15,9 @@ route_vrp(
   method = "2-opt",
   service_time = NULL,
   max_route_time = NULL,
-  balance = NULL
+  balance = NULL,
+  earliest = NULL,
+  latest = NULL
 )
 }
 \arguments{
@@ -81,6 +83,21 @@ distance savings while respecting capacity limits.
 routes), and inter-route swap (exchanging customers between routes).
 }
 }
+\section{Units and cost matrices}{
+
+The \code{cost_matrix} can contain travel times, distances, or any generalized
+cost. The solver minimizes the sum of matrix values along each route.
+When using time-based features (\code{service_time}, \code{max_route_time},
+\code{earliest}/\code{latest}, \code{balance = "time"}), the cost matrix should be in
+time-compatible units (e.g., minutes). Otherwise the time-based outputs
+and constraints will be dimensionally inconsistent.
+
+In the per-vehicle summary, \strong{Cost} is the raw matrix objective (travel
+only), while \strong{Time} adds service duration and any waiting induced by
+time windows. When no service time or windows are used, Time equals Cost
+and is not shown separately.
+}
+
 \section{Use Cases}{
 
 \itemize{

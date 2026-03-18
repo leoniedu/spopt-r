@@ -46,6 +46,134 @@ impl Route {
 }
 
 // ---------------------------------------------------------------------------
+// Time-window schedule computation
+// ---------------------------------------------------------------------------
+
+/// Compute schedule for a VRP route given time windows.
+/// Returns Some((arrivals, departures, cost, total_time)) or None if infeasible.
+/// Empty routes return Some with empty vecs, cost=0, total_time=0.
+fn schedule_route(
+    stops: &[usize],
+    depot: usize,
+    matrix: &[Vec<f64>],
+    service_times: &[f64],
+    earliest: &[f64],
+    latest: &[f64],
+) -> Option<(Vec<f64>, Vec<f64>, f64, f64)> {
+    if stops.is_empty() {
+        return Some((Vec::new(), Vec::new(), 0.0, 0.0));
+    }
+
+    let depot_departure = earliest[depot];
+    let mut arrivals = vec![0.0; stops.len()];
+    let mut departures = vec![0.0; stops.len()];
+    let mut cost = 0.0;
+
+    // First stop
+    let travel = matrix[depot][stops[0]];
+    cost += travel;
+    let arrive = depot_departure + travel;
+    let service_start = arrive.max(earliest[stops[0]]);
+    if service_start > latest[stops[0]] + 1e-10 {
+        return None;
+    }
+    arrivals[0] = service_start;
+    departures[0] = service_start + service_times[stops[0]];
+
+    // Remaining stops
+    for i in 1..stops.len() {
+        let travel = matrix[stops[i - 1]][stops[i]];
+        cost += travel;
+        let arrive = departures[i - 1] + travel;
+        let service_start = arrive.max(earliest[stops[i]]);
+        if service_start > latest[stops[i]] + 1e-10 {
+            return None;
+        }
+        arrivals[i] = service_start;
+        departures[i] = service_start + service_times[stops[i]];
+    }
+
+    // Return to depot
+    let return_travel = matrix[*stops.last().unwrap()][depot];
+    cost += return_travel;
+    let return_time = departures[stops.len() - 1] + return_travel;
+    let total_time = return_time - depot_departure;
+
+    Some((arrivals, departures, cost, total_time))
+}
+
+/// Recompute route cost/load and set total_time from schedule.
+/// Must only be called when feasibility has already been verified.
+fn recompute_with_schedule(
+    route: &mut Route,
+    depot: usize,
+    matrix: &[Vec<f64>],
+    service_times: &[f64],
+    earliest: &[f64],
+    latest: &[f64],
+) {
+    route.recompute(depot, matrix, service_times);
+    if route.stops.is_empty() {
+        return;
+    }
+    if let Some((_, _, _, total_time)) = schedule_route(
+        &route.stops, depot, matrix, service_times, earliest, latest,
+    ) {
+        route.total_time = total_time;
+    }
+    // If schedule_route returns None here, it's a caller bug -- feasibility
+    // should have been checked before calling this function. We keep the
+    // recompute() total_time as a safe fallback.
+}
+
+/// Check if a route's stops are time-feasible (windows + max_route_time).
+/// When windows are not active, checks max_route_time against the non-windowed total_time.
+/// When windows are active, uses schedule_route for the authoritative total_time.
+/// Returns Some(total_time) if feasible, None if not.
+fn check_time_feasibility(
+    stops: &[usize],
+    depot: usize,
+    matrix: &[Vec<f64>],
+    service_times: &[f64],
+    max_route_time: Option<f64>,
+    earliest: Option<&[f64]>,
+    latest: Option<&[f64]>,
+) -> Option<f64> {
+    if let (Some(ew), Some(lw)) = (earliest, latest) {
+        // Window-aware: schedule determines feasibility and total_time
+        match schedule_route(stops, depot, matrix, service_times, ew, lw) {
+            None => return None, // window violated
+            Some((_, _, _, total_time)) => {
+                if let Some(max_t) = max_route_time {
+                    if total_time > max_t + 1e-10 {
+                        return None;
+                    }
+                }
+                return Some(total_time);
+            }
+        }
+    }
+
+    // No windows: compute non-windowed total_time
+    if stops.is_empty() {
+        return Some(0.0);
+    }
+    let mut cost = matrix[depot][stops[0]];
+    for i in 0..stops.len() - 1 {
+        cost += matrix[stops[i]][stops[i + 1]];
+    }
+    cost += matrix[*stops.last().unwrap()][depot];
+    let total_time = cost + stops.iter().map(|&s| service_times[s]).sum::<f64>();
+
+    if let Some(max_t) = max_route_time {
+        if total_time > max_t + 1e-10 {
+            return None;
+        }
+    }
+    Some(total_time)
+}
+
+// ---------------------------------------------------------------------------
 // Clarke-Wright Savings construction heuristic
 // ---------------------------------------------------------------------------
 
@@ -64,6 +192,8 @@ fn clarke_wright(
     max_vehicles: Option<usize>,
     service_times: &[f64],
     max_route_time: Option<f64>,
+    earliest: Option<&[f64]>,
+    latest: Option<&[f64]>,
 ) -> Vec<Route> {
     let customers: Vec<usize> = (0..n).filter(|&i| i != depot).collect();
     let nc = customers.len();
@@ -78,7 +208,12 @@ fn clarke_wright(
         r.stops.push(c);
         r.load = demands[c];
         r.cost = matrix[depot][c] + matrix[c][depot];
-        r.total_time = r.cost + service_times[c];
+        // Set total_time: window-aware if windows active, otherwise travel + service
+        if let Some(tt) = check_time_feasibility(&r.stops, depot, matrix, service_times, max_route_time, earliest, latest) {
+            r.total_time = tt;
+        } else {
+            r.total_time = r.cost + service_times[c];
+        }
         routes.push(Some(r));
         customer_route[c] = idx;
     }
@@ -143,9 +278,9 @@ fn clarke_wright(
             merged.stops.extend_from_slice(&donor.stops);
             merged.load += donor.load;
             merged.recompute(depot, matrix, service_times);
-            // Check time feasibility
-            if let Some(max_t) = max_route_time {
-                if merged.total_time > max_t {
+            // Check time + window feasibility
+            match check_time_feasibility(&merged.stops, depot, matrix, service_times, max_route_time, earliest, latest) {
+                None => {
                     // Undo merge
                     for &c in &saved_donor.stops {
                         customer_route[c] = rj;
@@ -154,6 +289,7 @@ fn clarke_wright(
                     routes[rj] = Some(saved_donor);
                     continue;
                 }
+                Some(tt) => { merged.total_time = tt; }
             }
             routes[ri] = Some(merged);
         } else if j_is_last && i_is_first {
@@ -168,9 +304,9 @@ fn clarke_wright(
             merged.stops.extend_from_slice(&donor.stops);
             merged.load += donor.load;
             merged.recompute(depot, matrix, service_times);
-            // Check time feasibility
-            if let Some(max_t) = max_route_time {
-                if merged.total_time > max_t {
+            // Check time + window feasibility
+            match check_time_feasibility(&merged.stops, depot, matrix, service_times, max_route_time, earliest, latest) {
+                None => {
                     // Undo merge
                     for &c in &saved_donor.stops {
                         customer_route[c] = ri;
@@ -179,6 +315,7 @@ fn clarke_wright(
                     routes[ri] = Some(saved_donor);
                     continue;
                 }
+                Some(tt) => { merged.total_time = tt; }
             }
             routes[rj] = Some(merged);
         }
@@ -197,14 +334,11 @@ fn clarke_wright(
             for i in 0..result.len() {
                 for j in i + 1..result.len() {
                     if result[i].load + result[j].load <= capacity {
-                        // Check time feasibility of potential merge
-                        if let Some(max_t) = max_route_time {
-                            let mut trial = result[i].clone();
-                            trial.stops.extend_from_slice(&result[j].stops);
-                            trial.recompute(depot, matrix, service_times);
-                            if trial.total_time > max_t {
-                                continue;
-                            }
+                        // Check time + window feasibility of potential merge
+                        let mut trial_stops = result[i].stops.clone();
+                        trial_stops.extend_from_slice(&result[j].stops);
+                        if check_time_feasibility(&trial_stops, depot, matrix, service_times, max_route_time, earliest, latest).is_none() {
+                            continue;
                         }
                         let merge_cost = result[i].cost + result[j].cost;
                         if best_merge.is_none()
@@ -221,6 +355,12 @@ fn clarke_wright(
                 result[i].stops.extend_from_slice(&donor.stops);
                 result[i].load += donor.load;
                 result[i].recompute(depot, matrix, service_times);
+                // Update total_time from schedule if windows active
+                if let (Some(ew), Some(lw)) = (earliest, latest) {
+                    if let Some((_, _, _, tt)) = schedule_route(&result[i].stops, depot, matrix, service_times, ew, lw) {
+                        result[i].total_time = tt;
+                    }
+                }
             } else {
                 break;
             }
@@ -277,14 +417,15 @@ fn clarke_wright(
                     new_routes[ri].load += cust_demand;
                     new_routes[ri].recompute(depot, matrix, service_times);
 
-                    // Check time feasibility; if exceeded, undo and try next route
-                    if let Some(max_t) = max_route_time {
-                        if new_routes[ri].total_time > max_t {
+                    // Check time + window feasibility; if exceeded, undo and try next route
+                    match check_time_feasibility(&new_routes[ri].stops, depot, matrix, service_times, max_route_time, earliest, latest) {
+                        None => {
                             new_routes[ri].stops.remove(best_pos);
                             new_routes[ri].load -= cust_demand;
                             new_routes[ri].recompute(depot, matrix, service_times);
                             continue;
                         }
+                        Some(tt) => { new_routes[ri].total_time = tt; }
                     }
 
                     inserted = true;
@@ -425,6 +566,99 @@ fn intra_route_or_opt(route: &mut Route, depot: usize, matrix: &[Vec<f64>], serv
     }
 
     improved
+}
+
+// ---------------------------------------------------------------------------
+// Window-aware intra-route 2-opt (first-improvement)
+// ---------------------------------------------------------------------------
+
+fn intra_route_two_opt_windows(
+    route: &mut Route,
+    depot: usize,
+    matrix: &[Vec<f64>],
+    service_times: &[f64],
+    earliest: &[f64],
+    latest: &[f64],
+) -> bool {
+    if route.stops.len() < 3 {
+        return false;
+    }
+
+    let current_cost = route.cost;
+
+    for i in 0..route.stops.len() - 1 {
+        for j in i + 1..route.stops.len() {
+            let mut candidate = route.stops.clone();
+            candidate[i..=j].reverse();
+
+            if let Some((_, _, cost, total_time)) =
+                schedule_route(&candidate, depot, matrix, service_times, earliest, latest)
+            {
+                if cost < current_cost - 1e-10 {
+                    route.stops = candidate;
+                    route.cost = cost;
+                    route.total_time = total_time;
+                    return true; // first-improvement
+                }
+            }
+        }
+    }
+
+    false
+}
+
+// ---------------------------------------------------------------------------
+// Window-aware intra-route or-opt (first-improvement)
+// ---------------------------------------------------------------------------
+
+fn intra_route_or_opt_windows(
+    route: &mut Route,
+    depot: usize,
+    matrix: &[Vec<f64>],
+    service_times: &[f64],
+    earliest: &[f64],
+    latest: &[f64],
+) -> bool {
+    if route.stops.len() < 3 {
+        return false;
+    }
+
+    let current_cost = route.cost;
+
+    for seg_len in 1..=3usize {
+        for start in 0..route.stops.len().saturating_sub(seg_len - 1) {
+            if start + seg_len > route.stops.len() {
+                break;
+            }
+            let segment: Vec<usize> = route.stops[start..start + seg_len].to_vec();
+            let mut base = route.stops.clone();
+            base.drain(start..start + seg_len);
+
+            // Try all insertion positions in the remaining stops
+            for insert_pos in 0..=base.len() {
+                if insert_pos == start {
+                    continue; // same position
+                }
+                let mut candidate = base.clone();
+                for (k, &node) in segment.iter().enumerate() {
+                    candidate.insert(insert_pos + k, node);
+                }
+
+                if let Some((_, _, cost, total_time)) =
+                    schedule_route(&candidate, depot, matrix, service_times, earliest, latest)
+                {
+                    if cost < current_cost - 1e-10 {
+                        route.stops = candidate;
+                        route.cost = cost;
+                        route.total_time = total_time;
+                        return true; // first-improvement
+                    }
+                }
+            }
+        }
+    }
+
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -611,6 +845,190 @@ fn inter_route_swap(
 
         routes[ri].recompute(depot, matrix, service_times);
         routes[rj].recompute(depot, matrix, service_times);
+
+        return true;
+    }
+
+    false
+}
+
+// ---------------------------------------------------------------------------
+// Window-aware inter-route relocate
+// ---------------------------------------------------------------------------
+
+fn inter_route_relocate_windows(
+    routes: &mut Vec<Route>,
+    depot: usize,
+    matrix: &[Vec<f64>],
+    demands: &[f64],
+    capacity: f64,
+    service_times: &[f64],
+    max_route_time: Option<f64>,
+    earliest: &[f64],
+    latest: &[f64],
+) -> bool {
+    let n_routes = routes.len();
+    let mut best_gain = 1e-10;
+    let mut best_move: Option<(usize, usize, usize, usize)> = None;
+
+    for ri in 0..n_routes {
+        for pos in 0..routes[ri].stops.len() {
+            let customer = routes[ri].stops[pos];
+            let cust_demand = demands[customer];
+
+            for rj in 0..n_routes {
+                if ri == rj { continue; }
+                if routes[rj].load + cust_demand > capacity { continue; }
+
+                let rj_len = routes[rj].stops.len();
+                for insert_pos in 0..=rj_len {
+                    // Build candidate receiving route
+                    let mut rj_stops = routes[rj].stops.clone();
+                    rj_stops.insert(insert_pos, customer);
+
+                    // Check window feasibility on receiving route
+                    let rj_sched = match schedule_route(
+                        &rj_stops, depot, matrix, service_times, earliest, latest,
+                    ) {
+                        Some(s) => s,
+                        None => continue,
+                    };
+
+                    // Check max_route_time
+                    if let Some(max_t) = max_route_time {
+                        if rj_sched.3 > max_t + 1e-10 { continue; }
+                    }
+
+                    // Build candidate source route (customer removed)
+                    let mut ri_stops = routes[ri].stops.clone();
+                    ri_stops.remove(pos);
+
+                    let ri_sched = match schedule_route(
+                        &ri_stops, depot, matrix, service_times, earliest, latest,
+                    ) {
+                        Some(s) => s,
+                        None => continue,
+                    };
+
+                    if let Some(max_t) = max_route_time {
+                        if ri_sched.3 > max_t + 1e-10 { continue; }
+                    }
+
+                    // Cost gain from actual schedules
+                    let old_cost = routes[ri].cost + routes[rj].cost;
+                    let new_cost = ri_sched.2 + rj_sched.2;
+                    let gain = old_cost - new_cost;
+
+                    if gain > best_gain {
+                        best_gain = gain;
+                        best_move = Some((ri, pos, rj, insert_pos));
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some((from_r, from_pos, to_r, to_pos)) = best_move {
+        let customer = routes[from_r].stops.remove(from_pos);
+        routes[from_r].load -= demands[customer];
+        recompute_with_schedule(&mut routes[from_r], depot, matrix, service_times, earliest, latest);
+
+        routes[to_r].stops.insert(to_pos, customer);
+        routes[to_r].load += demands[customer];
+        recompute_with_schedule(&mut routes[to_r], depot, matrix, service_times, earliest, latest);
+
+        routes.retain(|r| !r.stops.is_empty());
+        return true;
+    }
+
+    false
+}
+
+// ---------------------------------------------------------------------------
+// Window-aware inter-route swap
+// ---------------------------------------------------------------------------
+
+fn inter_route_swap_windows(
+    routes: &mut Vec<Route>,
+    depot: usize,
+    matrix: &[Vec<f64>],
+    demands: &[f64],
+    capacity: f64,
+    service_times: &[f64],
+    max_route_time: Option<f64>,
+    earliest: &[f64],
+    latest: &[f64],
+) -> bool {
+    let n_routes = routes.len();
+    let mut best_gain = 1e-10;
+    let mut best_swap: Option<(usize, usize, usize, usize)> = None;
+
+    for ri in 0..n_routes {
+        for pi in 0..routes[ri].stops.len() {
+            let ci = routes[ri].stops[pi];
+
+            for rj in ri + 1..n_routes {
+                for pj in 0..routes[rj].stops.len() {
+                    let cj = routes[rj].stops[pj];
+
+                    // Capacity check
+                    let new_load_i = routes[ri].load - demands[ci] + demands[cj];
+                    let new_load_j = routes[rj].load - demands[cj] + demands[ci];
+                    if new_load_i > capacity || new_load_j > capacity { continue; }
+
+                    // Build candidate routes with swap
+                    let mut ri_stops = routes[ri].stops.clone();
+                    ri_stops[pi] = cj;
+                    let mut rj_stops = routes[rj].stops.clone();
+                    rj_stops[pj] = ci;
+
+                    // Check feasibility via schedule
+                    let ri_sched = match schedule_route(
+                        &ri_stops, depot, matrix, service_times, earliest, latest,
+                    ) {
+                        Some(s) => s,
+                        None => continue,
+                    };
+
+                    let rj_sched = match schedule_route(
+                        &rj_stops, depot, matrix, service_times, earliest, latest,
+                    ) {
+                        Some(s) => s,
+                        None => continue,
+                    };
+
+                    // Check max_route_time
+                    if let Some(max_t) = max_route_time {
+                        if ri_sched.3 > max_t + 1e-10 || rj_sched.3 > max_t + 1e-10 {
+                            continue;
+                        }
+                    }
+
+                    let old_cost = routes[ri].cost + routes[rj].cost;
+                    let new_cost = ri_sched.2 + rj_sched.2;
+                    let gain = old_cost - new_cost;
+
+                    if gain > best_gain {
+                        best_gain = gain;
+                        best_swap = Some((ri, pi, rj, pj));
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some((ri, pi, rj, pj)) = best_swap {
+        let ci = routes[ri].stops[pi];
+        let cj = routes[rj].stops[pj];
+
+        routes[ri].stops[pi] = cj;
+        routes[rj].stops[pj] = ci;
+
+        routes[ri].load = routes[ri].load - demands[ci] + demands[cj];
+        routes[rj].load = routes[rj].load - demands[cj] + demands[ci];
+
+        recompute_with_schedule(&mut routes[ri], depot, matrix, service_times, earliest, latest);
+        recompute_with_schedule(&mut routes[rj], depot, matrix, service_times, earliest, latest);
 
         return true;
     }
@@ -898,6 +1316,8 @@ pub fn solve(
     service_times: &[f64],
     max_route_time: Option<f64>,
     balance_time: bool,
+    earliest: Option<&[f64]>,
+    latest: Option<&[f64]>,
 ) -> List {
     let n = cost_matrix.nrows();
     let flat = cost_matrix.data();
@@ -910,8 +1330,10 @@ pub fn solve(
         }
     }
 
+    let use_windows = earliest.is_some() && latest.is_some();
+
     // Phase 1: Construction via Clarke-Wright savings
-    let mut routes = clarke_wright(n, depot, &matrix, demands, capacity, max_vehicles, service_times, max_route_time);
+    let mut routes = clarke_wright(n, depot, &matrix, demands, capacity, max_vehicles, service_times, max_route_time, earliest, latest);
 
     // Compute initial total cost
     let initial_cost: f64 = routes.iter().map(|r| r.cost).sum();
@@ -926,24 +1348,46 @@ pub fn solve(
         loop {
             let mut any_improved = false;
 
-            // Intra-route 2-opt and or-opt on each route
-            for route in routes.iter_mut() {
-                if intra_route_two_opt(route, depot, &matrix, symmetric, service_times) {
+            if use_windows {
+                let ew = earliest.unwrap();
+                let lw = latest.unwrap();
+
+                // Window-aware intra-route operators
+                for route in routes.iter_mut() {
+                    if intra_route_two_opt_windows(route, depot, &matrix, service_times, ew, lw) {
+                        any_improved = true;
+                    }
+                    if intra_route_or_opt_windows(route, depot, &matrix, service_times, ew, lw) {
+                        any_improved = true;
+                    }
+                }
+
+                // Window-aware inter-route operators
+                if inter_route_relocate_windows(&mut routes, depot, &matrix, demands, capacity,
+                                                 service_times, max_route_time, ew, lw) {
                     any_improved = true;
                 }
-                if intra_route_or_opt(route, depot, &matrix, service_times) {
+                if inter_route_swap_windows(&mut routes, depot, &matrix, demands, capacity,
+                                             service_times, max_route_time, ew, lw) {
                     any_improved = true;
                 }
-            }
+            } else {
+                // Standard operators (no windows)
+                for route in routes.iter_mut() {
+                    if intra_route_two_opt(route, depot, &matrix, symmetric, service_times) {
+                        any_improved = true;
+                    }
+                    if intra_route_or_opt(route, depot, &matrix, service_times) {
+                        any_improved = true;
+                    }
+                }
 
-            // Inter-route relocate
-            if inter_route_relocate(&mut routes, depot, &matrix, demands, capacity, service_times, max_route_time) {
-                any_improved = true;
-            }
-
-            // Inter-route swap
-            if inter_route_swap(&mut routes, depot, &matrix, demands, capacity, service_times, max_route_time) {
-                any_improved = true;
+                if inter_route_relocate(&mut routes, depot, &matrix, demands, capacity, service_times, max_route_time) {
+                    any_improved = true;
+                }
+                if inter_route_swap(&mut routes, depot, &matrix, demands, capacity, service_times, max_route_time) {
+                    any_improved = true;
+                }
             }
 
             iterations += 1;
@@ -973,27 +1417,25 @@ pub fn solve(
     }
 
     // Phase 3: Route-time balancing (if requested)
+    // Skip balancing when time windows are active
     let mut balance_iterations: i32 = 0;
-    if balance_time && method != "savings" && routes.len() > 1 {
+    if balance_time && !use_windows && method != "savings" && routes.len() > 1 {
         let pre_balance_cost: f64 = routes.iter().map(|r| r.cost).sum();
-        let mut cost_budget = pre_balance_cost * 0.02; // heuristic: small bounded cost increase
+        let mut cost_budget = pre_balance_cost * 0.02;
 
         loop {
             let mut any_improved = false;
 
-            // Intra-route 2-opt and or-opt to clean up after balance moves
             for route in routes.iter_mut() {
                 intra_route_two_opt(route, depot, &matrix, symmetric, service_times);
                 intra_route_or_opt(route, depot, &matrix, service_times);
             }
 
-            // Try relocating from the heaviest route
             if balance_relocate(&mut routes, depot, &matrix, demands, capacity,
                                 service_times, max_route_time, &mut cost_budget) {
                 any_improved = true;
             }
 
-            // Try swapping only when relocate found nothing
             if !any_improved {
                 if balance_swap(&mut routes, depot, &matrix, demands, capacity,
                                 service_times, max_route_time, &mut cost_budget) {
@@ -1013,6 +1455,21 @@ pub fn solve(
         }
     }
 
+    // Post-check: if windows are active, verify every route can be scheduled
+    if use_windows {
+        let ew = earliest.unwrap();
+        let lw = latest.unwrap();
+        for (v, route) in routes.iter().enumerate() {
+            if schedule_route(&route.stops, depot, &matrix, service_times, ew, lw).is_none() {
+                extendr_api::throw_r_error(format!(
+                    "Vehicle {} route is infeasible under the supplied time windows. \
+                     Check that all customers are individually reachable within their windows.",
+                    v + 1
+                ));
+            }
+        }
+    }
+
     let total_cost: f64 = routes.iter().map(|r| r.cost).sum();
     let total_time: f64 = routes.iter().map(|r| r.total_time).sum();
     let improvement = if initial_cost > 0.0 {
@@ -1025,6 +1482,8 @@ pub fn solve(
     let n_vehicles = routes.len() as i32;
     let mut all_vehicle_ids: Vec<i32> = vec![0; n];
     let mut all_visit_orders: Vec<i32> = vec![0; n];
+    let mut all_arrivals: Vec<f64> = vec![f64::NAN; n];
+    let mut all_departures: Vec<f64> = vec![f64::NAN; n];
 
     // Per-vehicle stats
     let mut vehicle_costs: Vec<f64> = Vec::new();
@@ -1038,6 +1497,20 @@ pub fn solve(
         vehicle_loads.push((route.load * 100.0).round() / 100.0);
         vehicle_stops.push(route.stops.len() as i32);
         vehicle_times.push((route.total_time * 100.0).round() / 100.0);
+
+        // Compute final schedule for arrival/departure output
+        if use_windows {
+            let ew = earliest.unwrap();
+            let lw = latest.unwrap();
+            if let Some((arrs, deps, _, _)) = schedule_route(
+                &route.stops, depot, &matrix, service_times, ew, lw,
+            ) {
+                for (idx, &stop) in route.stops.iter().enumerate() {
+                    all_arrivals[stop] = (arrs[idx] * 100.0).round() / 100.0;
+                    all_departures[stop] = (deps[idx] * 100.0).round() / 100.0;
+                }
+            }
+        }
 
         for (order, &stop) in route.stops.iter().enumerate() {
             all_vehicle_ids[stop] = vehicle_id;
@@ -1058,6 +1531,8 @@ pub fn solve(
         vehicle_costs = vehicle_costs,
         vehicle_loads = vehicle_loads,
         vehicle_stops = vehicle_stops,
-        vehicle_times = vehicle_times
+        vehicle_times = vehicle_times,
+        arrival_times = all_arrivals,
+        departure_times = all_departures
     )
 }

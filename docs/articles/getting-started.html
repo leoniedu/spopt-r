@@ -28,7 +28,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">spopt</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -46,6 +46,7 @@
     <li><a class="dropdown-item" href="../articles/regionalization.html">Regionalization</a></li>
     <li><a class="dropdown-item" href="../articles/facility-location.html">Facility Location</a></li>
     <li><a class="dropdown-item" href="../articles/huff-model.html">Huff Model</a></li>
+    <li><a class="dropdown-item" href="../articles/routing.html">Route Optimization</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><a class="dropdown-item" href="../articles/travel-time-matrices.html">Travel-Time Cost Matrices</a></li>
   </ul>
@@ -89,15 +90,16 @@
 <p>Once installed, load the package along with sf for spatial data handling and tidyverse for data manipulation:</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/walkerke/spopt-r" class="external-link">spopt</a></span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://walker-data.com/spopt-r">spopt</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://r-spatial.github.io/sf/" class="external-link">sf</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://tidyverse.tidyverse.org" class="external-link">tidyverse</a></span><span class="op">)</span></span></code></pre></div>
 </div>
 </section><section class="level3"><h3 id="what-can-spopt-do">What can spopt do?<a class="anchor" aria-label="anchor" href="#what-can-spopt-do"></a>
 </h3>
-<p>spopt includes three families of spatial optimization algorithms:</p>
+<p>spopt includes four families of spatial optimization algorithms:</p>
 <p><strong>Regionalization</strong>: Build spatially-contiguous regions from smaller geographies. This is useful when you need to aggregate Census blocks into larger areas, create balanced sales territories, or design compact political districts. Algorithms include SKATER, AZP, Max-P, SPENC, and spatially-constrained Ward clustering.</p>
 <p><strong>Facility location</strong>: Find optimal locations for facilities given demand points and candidate sites. Whether you’re siting fire stations to minimize response times, placing retail stores to maximize coverage, or locating EV charging stations along highway corridors, spopt has algorithms for these problems. Options include P-Median, P-Center, MCLP, LSCP, CFLP, P-Dispersion, and FRLM.</p>
+<p><strong>Route optimization</strong>: Find the best stop sequence for delivery drivers, field technicians, or any visit-based workflow. Single-vehicle routing with open routes and fixed endpoints (<code><a href="../reference/route_tsp.html">route_tsp()</a></code>), or multi-vehicle dispatch with capacity constraints (<code><a href="../reference/route_vrp.html">route_vrp()</a></code>). Bring a travel-time matrix from r5r, OSRM, or any routing engine; spopt handles the sequencing.</p>
 <p><strong>Market analysis</strong>: Model consumer behavior and market competition with the Huff model. This classic retail gravity model predicts market share and expected sales based on store attractiveness and distance to consumers.</p>
 </section><section class="level3"><h3 id="a-quick-example">A quick example<a class="anchor" aria-label="anchor" href="#a-quick-example"></a>
 </h3>
@@ -167,6 +169,8 @@ Geodetic CRS:  NAD83
 <a href="regionalization.html">Regionalization</a> - Build spatially-contiguous regions with SKATER, AZP, Max-P, and more</li>
 <li>
 <a href="facility-location.html">Facility Location</a> - Solve location-allocation problems with P-Median, MCLP, and other algorithms</li>
+<li>
+<a href="routing.html">Route Optimization</a> - Optimize delivery routes and fleet dispatch with TSP and VRP</li>
 <li>
 <a href="huff-model.html">Huff Model</a> - Model market share and retail competition</li>
 <li>
@@ -264,7 +268,7 @@ Geodetic CRS:  NAD83
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.9000.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.9000.</p>
 </div>
 
     </footer>

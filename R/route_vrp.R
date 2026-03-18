@@ -48,6 +48,19 @@
 #'    (reversing subtours), inter-route relocate (moving a customer between
 #'    routes), and inter-route swap (exchanging customers between routes).
 #'
+#' @section Units and cost matrices:
+#' The `cost_matrix` can contain travel times, distances, or any generalized
+#' cost. The solver minimizes the sum of matrix values along each route.
+#' When using time-based features (`service_time`, `max_route_time`,
+#' `earliest`/`latest`, `balance = "time"`), the cost matrix should be in
+#' time-compatible units (e.g., minutes). Otherwise the time-based outputs
+#' and constraints will be dimensionally inconsistent.
+#'
+#' In the per-vehicle summary, **Cost** is the raw matrix objective (travel
+#' only), while **Time** adds service duration and any waiting induced by
+#' time windows. When no service time or windows are used, Time equals Cost
+#' and is not shown separately.
+#'
 #' @section Use Cases:
 #' \itemize{
 #'   \item **Oilfield logistics**: Route vacuum trucks to well pads with
@@ -93,7 +106,9 @@ route_vrp <- function(locations,
                 method = "2-opt",
                 service_time = NULL,
                 max_route_time = NULL,
-                balance = NULL) {
+                balance = NULL,
+                earliest = NULL,
+                latest = NULL) {
   resolve_route_vector <- function(value, arg_name, default = NULL) {
     if (is.null(value)) {
       return(default)
@@ -208,11 +223,57 @@ route_vrp <- function(locations,
     }
   }
 
+  # Resolve time windows
+  if (xor(is.null(earliest), is.null(latest))) {
+    stop("`earliest` and `latest` must be supplied together", call. = FALSE)
+  }
+
+  earliest_vec <- resolve_route_vector(earliest, "earliest", default = NULL)
+  latest_vec <- resolve_route_vector(latest, "latest", default = NULL)
+
+  if (!is.null(earliest_vec) && any(earliest_vec > latest_vec)) {
+    stop("All `earliest` values must be less than or equal to `latest`", call. = FALSE)
+  }
+
+  use_windows <- !is.null(earliest_vec)
+
+  # Pre-check: each customer individually feasible with windows
+  if (use_windows) {
+    svc <- if (is.null(service_vec)) rep(0, n) else service_vec
+    depot_depart <- earliest_vec[depot]
+    for (i in seq_len(n)) {
+      if (i == depot) next
+      arrive <- depot_depart + cost_matrix[depot, i]
+      svc_start <- max(arrive, earliest_vec[i])
+      if (svc_start > latest_vec[i] + 1e-10) {
+        stop(sprintf(
+          "Customer %d is infeasible: earliest service start (%.1f) exceeds latest window (%.1f)",
+          i, svc_start, latest_vec[i]
+        ), call. = FALSE)
+      }
+      if (!is.null(max_route_time)) {
+        depart <- svc_start + svc[i]
+        return_time <- depart + cost_matrix[i, depot]
+        route_time <- return_time - depot_depart
+        if (route_time > max_route_time + 1e-10) {
+          stop(sprintf(
+            "Customer %d is unreachable within max_route_time=%.1f (route time including waiting = %.1f)",
+            i, max_route_time, route_time
+          ), call. = FALSE)
+        }
+      }
+    }
+  }
+
   # Resolve balance mode
   balance_time <- FALSE
   if (!is.null(balance)) {
     balance <- match.arg(balance, c("time"))
-    balance_time <- TRUE
+    if (use_windows) {
+      warning("balance is ignored when time windows are active", call. = FALSE)
+    } else {
+      balance_time <- TRUE
+    }
   }
 
   if (!is.null(n_vehicles)) {
@@ -248,7 +309,9 @@ route_vrp <- function(locations,
     method,
     service_vec,
     max_route_time,
-    balance_time
+    balance_time,
+    earliest_vec,
+    latest_vec
   )
 
   end_time <- Sys.time()
@@ -288,6 +351,14 @@ route_vrp <- function(locations,
   output$.visit_order <- result$visit_order
   output$.visit_order[depot] <- 0L
 
+  # Add arrival/departure columns when time windows are active
+  if (use_windows) {
+    output$.arrival_time <- result$arrival_times
+    output$.arrival_time[depot] <- NA_real_
+    output$.departure_time <- result$departure_times
+    output$.departure_time[depot] <- NA_real_
+  }
+
   metadata <- list(
     algorithm = "vrp",
     method = method,
@@ -306,7 +377,8 @@ route_vrp <- function(locations,
     vehicle_capacity = vehicle_capacity,
     max_route_time = max_route_time,
     has_service_time = !is.null(service_vec),
-    balance = if (!is.null(balance) && method != "savings") balance else NULL,
+    has_time_windows = use_windows,
+    balance = if (!is.null(balance) && method != "savings" && !use_windows) balance else NULL,
     balance_iterations = result$balance_iterations,
     solve_time = as.numeric(difftime(end_time, start_time, units = "secs"))
   )
