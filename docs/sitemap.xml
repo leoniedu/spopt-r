@@ -8,11 +8,13 @@
 <url><loc>https://walker-data.com/spopt-r/articles/huff-model.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/articles/index.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/articles/regionalization.html</loc></url>
+<url><loc>https://walker-data.com/spopt-r/articles/routing.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/articles/travel-time-matrices.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/authors.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/index.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/azp.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/cflp.html</loc></url>
+<url><loc>https://walker-data.com/spopt-r/reference/delivery_data.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/distance_matrix.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/distance_matrix_geographic.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/dot-second_moa_ring.html</loc></url>
@@ -27,6 +29,8 @@
 <url><loc>https://walker-data.com/spopt-r/reference/p_center.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/p_dispersion.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/p_median.html</loc></url>
+<url><loc>https://walker-data.com/spopt-r/reference/route_tsp.html</loc></url>
+<url><loc>https://walker-data.com/spopt-r/reference/route_vrp.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/rust_azp.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/rust_cflp.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/rust_connected_components.html</loc></url>
@@ -44,6 +48,8 @@
 <url><loc>https://walker-data.com/spopt-r/reference/rust_p_median.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/rust_skater.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/rust_spenc.html</loc></url>
+<url><loc>https://walker-data.com/spopt-r/reference/rust_tsp.html</loc></url>
+<url><loc>https://walker-data.com/spopt-r/reference/rust_vrp.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/rust_ward_constrained.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/second_areal_moment.html</loc></url>
 <url><loc>https://walker-data.com/spopt-r/reference/skater.html</loc></url>

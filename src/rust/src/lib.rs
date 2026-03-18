@@ -4,6 +4,7 @@ mod distance;
 mod graph;
 mod region;
 mod locate;
+mod route;
 
 /// Compute Euclidean distance matrix between two sets of points
 ///
@@ -448,6 +449,254 @@ fn rust_huff(
     )
 }
 
+/// Solve Traveling Salesman Problem (TSP)
+///
+/// Solve a closed tour, open route, or fixed-end path over a square
+/// cost/distance matrix using nearest-neighbor construction with optional
+/// 2-opt and or-opt local search. Optional time windows and service times
+/// can be supplied for each stop.
+///
+/// @param cost_matrix Square cost/distance matrix (n x n)
+/// @param start Start index (0-based)
+/// @param end End index (0-based), or NULL for an open route
+/// @param method Algorithm: "nn" (nearest-neighbor only) or "2-opt" (with local search)
+/// @param earliest Optional earliest service times
+/// @param latest Optional latest service times
+/// @param service_time Optional service times at each stop
+/// @return List with tour (1-based), total_cost, nn_cost, improvement_pct, iterations,
+///   arrival_time, and departure_time
+/// @export
+#[extendr]
+fn rust_tsp(
+    cost_matrix: RMatrix<f64>,
+    start: i32,
+    end: Nullable<i32>,
+    method: &str,
+    earliest: Nullable<Vec<f64>>,
+    latest: Nullable<Vec<f64>>,
+    service_time: Nullable<Vec<f64>>,
+) -> List {
+    let n = cost_matrix.nrows();
+    if cost_matrix.ncols() != n {
+        extendr_api::throw_r_error(format!(
+            "cost_matrix must be square, got {} x {}",
+            n,
+            cost_matrix.ncols()
+        ));
+    }
+    if start < 0 || start as usize >= n {
+        extendr_api::throw_r_error(format!(
+            "start index {} is out of range [0, {})",
+            start, n
+        ));
+    }
+
+    let end_opt = end.into_option();
+    if let Some(end_idx) = end_opt {
+        if end_idx < 0 || end_idx as usize >= n {
+            extendr_api::throw_r_error(format!(
+                "end index {} is out of range [0, {})",
+                end_idx, n
+            ));
+        }
+    }
+
+    let earliest_opt = earliest.into_option();
+    let latest_opt = latest.into_option();
+    let service_opt = service_time.into_option();
+
+    if earliest_opt.is_some() != latest_opt.is_some() {
+        extendr_api::throw_r_error("Both `earliest` and `latest` must be supplied together.");
+    }
+    if let Some(values) = earliest_opt.as_ref() {
+        if values.len() != n {
+            extendr_api::throw_r_error(format!(
+                "`earliest` must have length {}, got {}",
+                n,
+                values.len()
+            ));
+        }
+    }
+    if let Some(values) = latest_opt.as_ref() {
+        if values.len() != n {
+            extendr_api::throw_r_error(format!(
+                "`latest` must have length {}, got {}",
+                n,
+                values.len()
+            ));
+        }
+    }
+    if let Some(values) = service_opt.as_ref() {
+        if values.len() != n {
+            extendr_api::throw_r_error(format!(
+                "`service_time` must have length {}, got {}",
+                n,
+                values.len()
+            ));
+        }
+        if values.iter().any(|&value| value < 0.0 || !value.is_finite()) {
+            extendr_api::throw_r_error("`service_time` must contain finite non-negative values.");
+        }
+    }
+    if let (Some(earliest_values), Some(latest_values)) = (earliest_opt.as_ref(), latest_opt.as_ref()) {
+        for idx in 0..n {
+            if !earliest_values[idx].is_finite() || !latest_values[idx].is_finite() {
+                extendr_api::throw_r_error("`earliest` and `latest` must contain finite values.");
+            }
+            if earliest_values[idx] > latest_values[idx] {
+                extendr_api::throw_r_error(format!(
+                    "`earliest[{idx}]` is greater than `latest[{idx}]`."
+                ));
+            }
+        }
+    }
+
+    match route::tsp::solve(
+        cost_matrix,
+        start as usize,
+        end_opt.map(|value| value as usize),
+        method,
+        earliest_opt.as_deref(),
+        latest_opt.as_deref(),
+        service_opt.as_deref(),
+    ) {
+        Ok(value) => value,
+        Err(err) => extendr_api::throw_r_error(err.to_string()),
+    }
+}
+
+/// Solve Capacitated Vehicle Routing Problem (CVRP)
+///
+/// Find minimum-cost routes for multiple vehicles, each with a capacity limit,
+/// to serve all customers from a depot. Uses Clarke-Wright savings heuristic
+/// with 2-opt, relocate, and swap improvement.
+///
+/// @param cost_matrix Square cost/distance matrix (n x n)
+/// @param depot Depot index (0-based)
+/// @param demands Demand at each location (depot demand should be 0)
+/// @param capacity Vehicle capacity
+/// @param max_vehicles Maximum number of vehicles (NULL for unlimited)
+/// @param method Algorithm: "savings" (construction only) or "2-opt" (with improvement)
+/// @param service_times Optional service time at each stop (NULL for zero)
+/// @param max_route_time Optional maximum total time per route (NULL for unlimited)
+/// @param balance_time Whether to run route-time balancing phase
+/// @param earliest Optional earliest arrival times at each stop
+/// @param latest Optional latest arrival times at each stop
+/// @return List with vehicle assignments, visit orders, costs, and route details
+/// @export
+#[extendr]
+fn rust_vrp(
+    cost_matrix: RMatrix<f64>,
+    depot: i32,
+    demands: Vec<f64>,
+    capacity: f64,
+    max_vehicles: Nullable<i32>,
+    method: &str,
+    service_times: Nullable<Vec<f64>>,
+    max_route_time: Nullable<f64>,
+    balance_time: bool,
+    earliest: Nullable<Vec<f64>>,
+    latest: Nullable<Vec<f64>>,
+) -> List {
+    let n = cost_matrix.nrows();
+    if depot < 0 || depot as usize >= n {
+        extendr_api::throw_r_error(format!(
+            "depot index {} is out of range [0, {})",
+            depot, n
+        ));
+    }
+    if demands.len() != n {
+        extendr_api::throw_r_error(format!(
+            "`demands` must have length {}, got {}",
+            n, demands.len()
+        ));
+    }
+    if capacity <= 0.0 {
+        extendr_api::throw_r_error(format!(
+            "capacity must be positive, got {}",
+            capacity
+        ));
+    }
+    let max_v = max_vehicles.into_option().map(|v| {
+        if v < 1 {
+            extendr_api::throw_r_error(format!("max_vehicles must be positive, got {}", v));
+        }
+        v as usize
+    });
+
+    let svc = service_times.into_option().unwrap_or_else(|| vec![0.0; n]);
+    if svc.len() != n {
+        extendr_api::throw_r_error(format!(
+            "`service_times` must have length {}, got {}",
+            n, svc.len()
+        ));
+    }
+    if svc.iter().any(|&v| v < 0.0 || !v.is_finite()) {
+        extendr_api::throw_r_error("`service_times` must contain finite non-negative values.");
+    }
+
+    let max_t = max_route_time.into_option();
+    if let Some(t) = max_t {
+        if t <= 0.0 || !t.is_finite() {
+            extendr_api::throw_r_error(format!(
+                "`max_route_time` must be positive and finite, got {}",
+                t
+            ));
+        }
+    }
+
+    let earliest_opt = earliest.into_option();
+    let latest_opt = latest.into_option();
+
+    if earliest_opt.is_some() != latest_opt.is_some() {
+        extendr_api::throw_r_error("Both `earliest` and `latest` must be supplied together.");
+    }
+    if let Some(values) = earliest_opt.as_ref() {
+        if values.len() != n {
+            extendr_api::throw_r_error(format!(
+                "`earliest` must have length {}, got {}", n, values.len()
+            ));
+        }
+        if values.iter().any(|v| !v.is_finite()) {
+            extendr_api::throw_r_error("`earliest` must contain finite values.");
+        }
+    }
+    if let Some(values) = latest_opt.as_ref() {
+        if values.len() != n {
+            extendr_api::throw_r_error(format!(
+                "`latest` must have length {}, got {}", n, values.len()
+            ));
+        }
+        if values.iter().any(|v| !v.is_finite()) {
+            extendr_api::throw_r_error("`latest` must contain finite values.");
+        }
+    }
+    if let (Some(ew), Some(lw)) = (earliest_opt.as_ref(), latest_opt.as_ref()) {
+        for idx in 0..n {
+            if ew[idx] > lw[idx] + 1e-10 {
+                extendr_api::throw_r_error(format!(
+                    "`earliest[{}]` ({}) is greater than `latest[{}]` ({}).",
+                    idx, ew[idx], idx, lw[idx]
+                ));
+            }
+        }
+    }
+
+    route::vrp::solve(
+        cost_matrix,
+        depot as usize,
+        &demands,
+        capacity,
+        max_v,
+        method,
+        &svc,
+        max_t,
+        balance_time,
+        earliest_opt.as_deref(),
+        latest_opt.as_deref(),
+    )
+}
+
 // Macro to generate exports
 extendr_module! {
     mod spopt;
@@ -469,4 +718,6 @@ extendr_module! {
     fn rust_frlm_greedy;
     fn rust_cflp;
     fn rust_huff;
+    fn rust_tsp;
+    fn rust_vrp;
 }

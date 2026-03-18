@@ -225,4 +225,40 @@ rust_cflp <- function(cost_matrix, weights, capacities, n_facilities, facility_c
 rust_huff <- function(cost_matrix, attractiveness, distance_exponent, sales_potential) .Call(wrap__rust_huff, cost_matrix, attractiveness, distance_exponent, sales_potential)
 
 
+#' Solve Traveling Salesman Problem (TSP)
+#'
+#' Solve a closed tour, open route, or fixed-end path over a square
+#' cost/distance matrix using nearest-neighbor construction with optional
+#' 2-opt and or-opt local search. Optional time windows and service times
+#' can be supplied for each stop.
+#'
+#' @param cost_matrix Square cost/distance matrix (n x n)
+#' @param start Start index (0-based)
+#' @param end End index (0-based), or NULL for an open route
+#' @param method Algorithm: "nn" (nearest-neighbor only) or "2-opt" (with local search)
+#' @param earliest Optional earliest service times
+#' @param latest Optional latest service times
+#' @param service_time Optional service times at each stop
+#' @return List with tour (1-based), total_cost, nn_cost, improvement_pct, iterations,
+#'   arrival_time, and departure_time
+#' @export
+rust_tsp <- function(cost_matrix, start, end, method, earliest, latest, service_time) .Call(wrap__rust_tsp, cost_matrix, start, end, method, earliest, latest, service_time)
+
+#' Solve Capacitated Vehicle Routing Problem (CVRP)
+#'
+#' @param cost_matrix Square cost/distance matrix (n x n)
+#' @param depot Depot index (0-based)
+#' @param demands Demand at each location
+#' @param capacity Vehicle capacity
+#' @param max_vehicles Maximum number of vehicles (NULL for unlimited)
+#' @param method Algorithm: "savings" or "2-opt"
+#' @param service_times Optional service time at each stop (NULL for zero)
+#' @param max_route_time Optional maximum total time per route (NULL for unlimited)
+#' @param balance_time Whether to run route-time balancing phase
+#' @param earliest Optional earliest arrival times at each stop
+#' @param latest Optional latest arrival times at each stop
+#' @return List with vehicle assignments, costs, and route details
+#' @export
+rust_vrp <- function(cost_matrix, depot, demands, capacity, max_vehicles, method, service_times, max_route_time, balance_time, earliest, latest) .Call(wrap__rust_vrp, cost_matrix, depot, demands, capacity, max_vehicles, method, service_times, max_route_time, balance_time, earliest, latest)
+
 # nolint end
