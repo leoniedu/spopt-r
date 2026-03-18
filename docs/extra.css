@@ -1,0 +1,4 @@
+/* Fix search results invisible on dark navbar (#6) */
+.form-inline {
+  color: var(--bs-navbar-color);
+}

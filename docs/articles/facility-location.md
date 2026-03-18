@@ -188,7 +188,7 @@ attr(result_pmedian, "spopt")
     [1] 7805.025
 
     $solve_time
-    [1] 0.350184
+    [1] 0.31107
 
 The `objective` value represents the total weighted distance - lower is
 better.

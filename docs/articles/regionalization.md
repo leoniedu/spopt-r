@@ -177,7 +177,7 @@ attr(maxp_result, "spopt")
     41     10      17         69841            TRUE
 
     $solve_time
-    [1] 0.07820511
+    [1] 0.08399677
 
     $scaled
     [1] TRUE
