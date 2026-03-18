@@ -159,19 +159,19 @@ meta <- attr(result, "spopt")
 cat(sprintf("Optimized route: %.0f minutes\n", meta$total_cost))
 ```
 
-    Optimized route: 137 minutes
+    Optimized route: 135 minutes
 
 ``` r
 cat(sprintf("Nearest-neighbor baseline: %.0f minutes\n", meta$nn_cost))
 ```
 
-    Nearest-neighbor baseline: 151 minutes
+    Nearest-neighbor baseline: 150 minutes
 
 ``` r
 cat(sprintf("Improvement: %.1f%%\n", meta$improvement_pct))
 ```
 
-    Improvement: 9.3%
+    Improvement: 10.0%
 
 The solver starts with a nearest-neighbor heuristic (always go to the
 closest unvisited stop), then improves it with 2-opt and or-opt local
@@ -193,15 +193,15 @@ result |>
        id    address                                    .visit_order
        <chr> <chr>                                             <int>
      1 depot 3700 San Jacinto Dr, Fort Worth, TX 76116             1
-     2 D24   8608 Chapin Rd, Fort Worth, TX 76116                  2
-     3 D08   8517 Calmont Ave, Fort Worth, TX 76116                3
-     4 D09   3905 Las Vegas Trail, Fort Worth, TX 76116            4
-     5 D03   4200 Birchman Ave, Fort Worth, TX 76107               5
-     6 D02   5800 Lovell Ave, Fort Worth, TX 76107                 6
-     7 D01   6301 Camp Bowie Blvd, Fort Worth, TX 76116            7
-     8 D14   3921 Benbrook Hwy, Fort Worth, TX 76116               8
-     9 D15   1201 Sproles Dr, Benbrook, TX 76126                   9
-    10 D13   9200 Westpark Dr, Benbrook, TX 76126                 10
+     2 D15   1201 Sproles Dr, Benbrook, TX 76126                   2
+     3 D13   9200 Westpark Dr, Benbrook, TX 76126                  3
+     4 D11   1100 Mercedes St, Benbrook, TX 76126                  4
+     5 D12   1000 Winscott Rd, Benbrook, TX 76126                  5
+     6 D07   7200 Oakmont Blvd, Fort Worth, TX 76132               6
+     7 D06   7400 Oakmont Blvd, Fort Worth, TX 76132               7
+     8 D23   4801 Old Granbury Rd, Fort Worth, TX 76133            8
+     9 D04   6100 Wester Ave, Fort Worth, TX 76116                 9
+    10 D25   6500 Woodway Dr, Fort Worth, TX 76133                10
 
 The optimizer clusters geographically - it handles the Benbrook stops
 together rather than bouncing back and forth. As the bundled
@@ -270,13 +270,13 @@ meta_open <- attr(result_open, "spopt")
 cat(sprintf("Closed route: %.0f minutes\n", meta$total_cost))
 ```
 
-    Closed route: 137 minutes
+    Closed route: 135 minutes
 
 ``` r
 cat(sprintf("Open route:   %.0f minutes\n", meta_open$total_cost))
 ```
 
-    Open route:   122 minutes
+    Open route:   120 minutes
 
 ``` r
 cat(sprintf("Saved by not returning: %.0f minutes\n",
@@ -310,7 +310,7 @@ cat(sprintf("Route type: %s\n", meta_path$route_type))
 cat(sprintf("Total time: %.0f minutes\n", meta_path$total_cost))
 ```
 
-    Total time: 125 minutes
+    Total time: 124 minutes
 
 ## Fleet routing: VRP
 
@@ -361,7 +361,7 @@ cat(sprintf("Vehicles used: %d\n", meta_vrp$n_vehicles))
 cat(sprintf("Total drive time: %.0f minutes\n", meta_vrp$total_cost))
 ```
 
-    Total drive time: 165 minutes
+    Total drive time: 167 minutes
 
 The solver uses a Clarke-Wright savings heuristic for initial route
 construction, then improves with intra-route 2-opt and or-opt
@@ -373,15 +373,15 @@ summary(result_vrp)
 ```
 
     VRP routes: 26 locations, 3 vehicles (depot: 1)
-      Method: 2-opt | Total cost: 165.0 | Improvement: 5.7%
+      Method: 2-opt | Total cost: 167.0 | Improvement: 5.7%
       Capacity: 35
       Solve time: 0.000s
 
     Per-vehicle summary:
      Vehicle Stops Load Cost
-           1     8   33   41
+           1     8   33   44
            2     9   34   59
-           3     8   31   65
+           3     8   31   64
 
 ### Visualizing vehicle routes
 
@@ -466,7 +466,7 @@ cat(sprintf("Total time: %.0f min (vs %.0f min with %d vans)\n",
             meta_2$total_cost, meta_vrp$total_cost, meta_vrp$n_vehicles))
 ```
 
-    Total time: 194 min (vs 165 min with 3 vans)
+    Total time: 192 min (vs 167 min with 3 vans)
 
 Fewer vehicles means longer routes per driver. The solver finds the best
 assignment given the constraint, but you’ll want to check that the
@@ -495,15 +495,15 @@ summary(result_shift)
 ```
 
     VRP routes: 26 locations, 3 vehicles (depot: 1)
-      Method: 2-opt | Total cost: 161.0 | Improvement: 6.9%
+      Method: 2-opt | Total cost: 162.0 | Improvement: 6.4%
       Capacity: 50 | Max route time: 90
       Solve time: 0.000s
 
     Per-vehicle summary:
      Vehicle Stops Load Cost Time
-           1    10   43   58   88
-           2     8   29   44   68
-           3     7   26   59   80
+           1     9   38   54   81
+           2     9   34   50   77
+           3     7   26   58   79
 
       Cost = matrix objective (travel only); Time = travel + service + waiting
 
@@ -535,13 +535,13 @@ summary(result_balanced)
 ```
 
     VRP routes: 26 locations, 3 vehicles (depot: 1)
-      Method: 2-opt | Total cost: 166.0 | Improvement: 5.1%
+      Method: 2-opt | Total cost: 167.0 | Improvement: 5.7%
       Capacity: 35 | Balance: time (1 move)
       Solve time: 0.000s
 
     Per-vehicle summary:
      Vehicle Stops Load Cost Time
-           1     8   34   44   68
+           1     8   34   45   69
            2     9   34   59   86
            3     8   30   63   87
 
@@ -580,16 +580,16 @@ summary(result_tw)
 ```
 
     VRP routes: 26 locations, 6 vehicles (depot: 1)
-      Method: 2-opt | Total cost: 228.0 | Improvement: 6.6%
+      Method: 2-opt | Total cost: 229.0 | Improvement: 6.2%
       Capacity: 50 | Time windows: active
       Solve time: 0.001s
 
     Per-vehicle summary:
      Vehicle Stops Load Cost  Time
-           1     5   22   46 61.00
-           2     4   16   25 53.76
-           3     4   14   27 61.59
-           4     4   16   42 69.13
+           1     4   17   42 54.00
+           2     5   19   33 68.28
+           3     4   16   25 53.76
+           4     4   16   41 68.13
            5     3   10   41 59.16
            6     5   20   47 74.22
 
@@ -638,7 +638,7 @@ get_route_legs <- function(tour_indices, r5r_core) {
       shortest_path = TRUE
     )
   }) |>
-    list_rbind()
+    bind_rows()
 }
 
 # TSP: use the tour from metadata
@@ -656,7 +656,7 @@ vrp_route <- seq_len(meta_vrp$n_vehicles) |>
     get_route_legs(vehicle_tour, r5r_core) |>
       mutate(vehicle = v)
   }) |>
-  list_rbind()
+  bind_rows()
 ```
 
 The same pattern works with other routing engines. With OSRM

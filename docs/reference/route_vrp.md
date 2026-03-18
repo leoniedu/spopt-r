@@ -83,6 +83,18 @@ route_vrp(
   post-optimization phase that may slightly increase total cost (bounded
   to a small percentage). Ignored when `method = "savings"`.
 
+- earliest:
+
+  Optional earliest arrival/service time at each stop. Supply either a
+  numeric vector of length `nrow(locations)` or a column name in
+  `locations`. Must be supplied together with `latest`.
+
+- latest:
+
+  Optional latest arrival/service time at each stop. Must be supplied
+  together with `earliest`. A vehicle may arrive early and wait, but
+  cannot begin service after this time.
+
 ## Value
 
 An sf object (the input `locations`) with added columns:

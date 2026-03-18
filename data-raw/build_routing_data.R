@@ -148,7 +148,7 @@ get_route_legs <- function(tour_indices, r5r_core) {
       shortest_path = TRUE
     )
   }) |>
-    list_rbind()
+    bind_rows()
 }
 
 cat("Getting TSP route geometries...\n")
@@ -165,7 +165,7 @@ vrp_route <- seq_len(vrp_meta$n_vehicles) |>
     get_route_legs(vehicle_tour, r5r_core) |>
       mutate(vehicle = v)
   }) |>
-  list_rbind()
+  bind_rows()
 
 stop_r5(r5r_core)
 

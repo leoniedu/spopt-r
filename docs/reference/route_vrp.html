@@ -132,6 +132,18 @@ minimize the longest route's total time after cost optimization. This
 runs a post-optimization phase that may slightly increase total cost
 (bounded to a small percentage). Ignored when <code>method = "savings"</code>.</p></dd>
 
+
+<dt id="arg-earliest">earliest<a class="anchor" aria-label="anchor" href="#arg-earliest"></a></dt>
+<dd><p>Optional earliest arrival/service time at each stop. Supply
+either a numeric vector of length <code>nrow(locations)</code> or a column name in
+<code>locations</code>. Must be supplied together with <code>latest</code>.</p></dd>
+
+
+<dt id="arg-latest">latest<a class="anchor" aria-label="anchor" href="#arg-latest"></a></dt>
+<dd><p>Optional latest arrival/service time at each stop. Must be
+supplied together with <code>earliest</code>. A vehicle may arrive early and wait,
+but cannot begin service after this time.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
