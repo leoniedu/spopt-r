@@ -11,6 +11,7 @@ p_median(
   weight_col,
   cost_matrix = NULL,
   distance_metric = "euclidean",
+  max_distance = NULL,
   verbose = FALSE
 )
 }
@@ -26,6 +27,11 @@ p_median(
 \item{cost_matrix}{Optional. Pre-computed distance matrix.}
 
 \item{distance_metric}{Distance metric: "euclidean" (default) or "manhattan".}
+
+\item{max_distance}{Optional numeric. Maximum allowable distance from a demand
+point to its assigned facility. When specified, demand can only be assigned
+to facilities within this radius. An error is raised if any demand point has
+no facility within \code{max_distance}.}
 
 \item{verbose}{Logical. Print solver progress.}
 }
@@ -59,6 +65,11 @@ Subject to:
 Where \eqn{w_i} is the demand weight at location i, \eqn{d_{ij}} is the
 distance from demand i to facility j, \eqn{x_{ij} = 1} if demand i is
 assigned to facility j, and \eqn{y_j = 1} if facility j is selected.
+
+When \code{max_distance} is specified, the model excludes assignment variables
+\eqn{x_{ij}} for pairs where \eqn{d_{ij} > \text{max\_distance}}. This
+reduces the problem size and enforces a hard geographic radius constraint,
+similar to warehouse location models.
 }
 \section{Use Cases}{
 
@@ -72,6 +83,8 @@ minimize total shipping costs to customers
 travel time across a population
 \item \strong{Service depots}: Locating maintenance facilities to minimize
 total technician travel to service calls
+\item \strong{Survey zones}: With \code{max_distance}, defining zones where each unit
+is within a maximum radius of its assigned center
 }
 
 For equity-focused objectives where no demand point should be too far,
@@ -89,6 +102,10 @@ facilities <- st_as_sf(data.frame(x = runif(20), y = runif(20)), coords = c("x",
 
 # Locate 5 facilities minimizing total weighted distance
 result <- p_median(demand, facilities, n_facilities = 5, weight_col = "population")
+
+# With a maximum distance constraint
+result <- p_median(demand, facilities, n_facilities = 5,
+                   weight_col = "population", max_distance = 0.3)
 
 # Mean distance to assigned facility
 attr(result, "spopt")$mean_distance

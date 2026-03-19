@@ -128,7 +128,6 @@ rust_ward_constrained <- function(attrs, n_regions, adj_i, adj_j) .Call(wrap__ru
 #' @param cooling_rate SA cooling rate (e.g., 0.99)
 #' @param tabu_length Tabu list length for SA
 #' @param seed Random seed
-#' @param homogeneous Whether to maximize homogeneity (the default), or heterogeneity (if set to FALSE).
 #' @param compact Whether to optimize for compactness
 #' @param compact_weight Weight for compactness vs dissimilarity (0-1)
 #' @param compact_metric Compactness metric to use, either "centroid" or "nmi" (normalized moment of inertia)
@@ -145,9 +144,10 @@ rust_max_p <- function(attrs, threshold_var, threshold, adj_i, adj_j, n_iteratio
 #' @param cost_matrix Cost/distance matrix (demand x facilities)
 #' @param weights Demand weights
 #' @param n_facilities Number of facilities to locate (p)
+#' @param max_distance Optional maximum distance for assignments
 #' @return List with selected facilities and assignments
 #' @export
-rust_p_median <- function(cost_matrix, weights, n_facilities) .Call(wrap__rust_p_median, cost_matrix, weights, n_facilities)
+rust_p_median <- function(cost_matrix, weights, n_facilities, max_distance) .Call(wrap__rust_p_median, cost_matrix, weights, n_facilities, max_distance)
 
 #' Solve LSCP (Location Set Covering Problem)
 #'
@@ -207,9 +207,10 @@ rust_frlm_greedy <- function(n_candidates, path_candidates, path_offsets, path_d
 #' @param capacities Capacity of each facility
 #' @param n_facilities Number of facilities to locate (0 if using facility costs)
 #' @param facility_costs Optional fixed cost to open each facility
+#' @param max_distance Optional maximum distance for assignments
 #' @return List with selected facilities, assignments, utilizations
 #' @export
-rust_cflp <- function(cost_matrix, weights, capacities, n_facilities, facility_costs) .Call(wrap__rust_cflp, cost_matrix, weights, capacities, n_facilities, facility_costs)
+rust_cflp <- function(cost_matrix, weights, capacities, n_facilities, facility_costs, max_distance) .Call(wrap__rust_cflp, cost_matrix, weights, capacities, n_facilities, facility_costs, max_distance)
 
 #' Compute Huff Model probabilities
 #'
@@ -223,7 +224,6 @@ rust_cflp <- function(cost_matrix, weights, capacities, n_facilities, facility_c
 #' @return List with probabilities, market shares, expected sales
 #' @export
 rust_huff <- function(cost_matrix, attractiveness, distance_exponent, sales_potential) .Call(wrap__rust_huff, cost_matrix, attractiveness, distance_exponent, sales_potential)
-
 
 #' Solve Traveling Salesman Problem (TSP)
 #'
@@ -246,19 +246,24 @@ rust_tsp <- function(cost_matrix, start, end, method, earliest, latest, service_
 
 #' Solve Capacitated Vehicle Routing Problem (CVRP)
 #'
+#' Find minimum-cost routes for multiple vehicles, each with a capacity limit,
+#' to serve all customers from a depot. Uses Clarke-Wright savings heuristic
+#' with 2-opt, relocate, and swap improvement.
+#'
 #' @param cost_matrix Square cost/distance matrix (n x n)
 #' @param depot Depot index (0-based)
-#' @param demands Demand at each location
+#' @param demands Demand at each location (depot demand should be 0)
 #' @param capacity Vehicle capacity
 #' @param max_vehicles Maximum number of vehicles (NULL for unlimited)
-#' @param method Algorithm: "savings" or "2-opt"
+#' @param method Algorithm: "savings" (construction only) or "2-opt" (with improvement)
 #' @param service_times Optional service time at each stop (NULL for zero)
 #' @param max_route_time Optional maximum total time per route (NULL for unlimited)
 #' @param balance_time Whether to run route-time balancing phase
 #' @param earliest Optional earliest arrival times at each stop
 #' @param latest Optional latest arrival times at each stop
-#' @return List with vehicle assignments, costs, and route details
+#' @return List with vehicle assignments, visit orders, costs, and route details
 #' @export
 rust_vrp <- function(cost_matrix, depot, demands, capacity, max_vehicles, method, service_times, max_route_time, balance_time, earliest, latest) .Call(wrap__rust_vrp, cost_matrix, depot, demands, capacity, max_vehicles, method, service_times, max_route_time, balance_time, earliest, latest)
+
 
 # nolint end

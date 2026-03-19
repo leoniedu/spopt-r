@@ -4,7 +4,14 @@
 \alias{rust_cflp}
 \title{Solve Capacitated Facility Location Problem (CFLP)}
 \usage{
-rust_cflp(cost_matrix, weights, capacities, n_facilities, facility_costs)
+rust_cflp(
+  cost_matrix,
+  weights,
+  capacities,
+  n_facilities,
+  facility_costs,
+  max_distance
+)
 }
 \arguments{
 \item{cost_matrix}{Cost/distance matrix (demand x facilities)}
@@ -16,6 +23,8 @@ rust_cflp(cost_matrix, weights, capacities, n_facilities, facility_costs)
 \item{n_facilities}{Number of facilities to locate (0 if using facility costs)}
 
 \item{facility_costs}{Optional fixed cost to open each facility}
+
+\item{max_distance}{Optional maximum distance for assignments}
 }
 \value{
 List with selected facilities, assignments, utilizations

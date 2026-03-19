@@ -18,6 +18,10 @@
 #'   the solver determines the optimal number of facilities to minimize total cost.
 #' @param cost_matrix Optional. Pre-computed distance/cost matrix (demand x facilities).
 #' @param distance_metric Distance metric: "euclidean" (default) or "manhattan".
+#' @param max_distance Optional numeric. Maximum allowable distance from a demand
+#'   point to its assigned facility. When specified, demand can only be assigned
+#'   to facilities within this radius. An error is raised if any demand point has
+#'   no facility within `max_distance`.
 #' @param verbose Logical. Print solver progress.
 #'
 #' @return A list with two sf objects:
@@ -100,6 +104,7 @@ cflp <- function(demand,
                  facility_cost_col = NULL,
                  cost_matrix = NULL,
                  distance_metric = "euclidean",
+                 max_distance = NULL,
                  verbose = FALSE) {
   # Input validation
   if (!inherits(demand, "sf")) {
@@ -166,27 +171,13 @@ cflp <- function(demand,
     cost_matrix <- distance_matrix(demand, facilities, type = distance_metric)
   }
 
-  # Validate cost matrix
-  if (any(is.na(cost_matrix))) {
-    n_na <- sum(is.na(cost_matrix))
-    warning(sprintf(
-      "cost_matrix contains %d NA values (unreachable points). Replacing with large value.",
-      n_na
-    ))
-    max_cost <- max(cost_matrix, na.rm = TRUE)
-    cost_matrix[is.na(cost_matrix)] <- max_cost * 100
-  }
-  if (any(is.infinite(cost_matrix))) {
-    n_inf <- sum(is.infinite(cost_matrix))
-    warning(sprintf(
-      "cost_matrix contains %d Inf values. Replacing with large value.",
-      n_inf
-    ))
-    finite_max <- max(cost_matrix[is.finite(cost_matrix)])
-    cost_matrix[is.infinite(cost_matrix)] <- finite_max * 100
-  }
+  cost_matrix <- sanitize_cost_matrix(cost_matrix)
 
   n_demand <- nrow(demand)
+
+  if (!is.null(max_distance)) {
+    validate_max_distance(max_distance, cost_matrix)
+  }
 
   start_time <- Sys.time()
 
@@ -196,7 +187,8 @@ cflp <- function(demand,
     weights,
     capacities,
     as.integer(n_facilities),
-    facility_costs
+    facility_costs,
+    max_distance
   )
 
   end_time <- Sys.time()
@@ -246,6 +238,7 @@ cflp <- function(demand,
     n_facilities = n_facilities,
     objective = result$objective,
     mean_distance = result$mean_distance,
+    max_distance = max_distance,
     n_split_demand = result$n_split_demand,
     allocation_matrix = allocation_matrix,
     solve_time = as.numeric(difftime(end_time, start_time, units = "secs")),

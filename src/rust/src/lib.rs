@@ -116,6 +116,7 @@ fn rust_skater(
 /// @param cost_matrix Cost/distance matrix (demand x facilities)
 /// @param weights Demand weights
 /// @param n_facilities Number of facilities to locate (p)
+/// @param max_distance Optional maximum distance for assignments
 /// @return List with selected facilities and assignments
 /// @export
 #[extendr]
@@ -123,8 +124,9 @@ fn rust_p_median(
     cost_matrix: RMatrix<f64>,
     weights: Vec<f64>,
     n_facilities: i32,
+    max_distance: Nullable<f64>,
 ) -> List {
-    locate::p_median::solve(cost_matrix, &weights, n_facilities as usize)
+    locate::p_median::solve(cost_matrix, &weights, n_facilities as usize, max_distance.into_option())
 }
 
 /// Solve LSCP (Location Set Covering Problem)
@@ -404,6 +406,7 @@ fn rust_frlm_greedy(
 /// @param capacities Capacity of each facility
 /// @param n_facilities Number of facilities to locate (0 if using facility costs)
 /// @param facility_costs Optional fixed cost to open each facility
+/// @param max_distance Optional maximum distance for assignments
 /// @return List with selected facilities, assignments, utilizations
 /// @export
 #[extendr]
@@ -413,6 +416,7 @@ fn rust_cflp(
     capacities: Vec<f64>,
     n_facilities: i32,
     facility_costs: Nullable<Vec<f64>>,
+    max_distance: Nullable<f64>,
 ) -> List {
     locate::cflp::solve(
         cost_matrix,
@@ -420,6 +424,7 @@ fn rust_cflp(
         &capacities,
         n_facilities as usize,
         facility_costs.into_option().as_deref(),
+        max_distance.into_option(),
     )
 }
 

@@ -2,6 +2,7 @@
 //!
 //! Minimize total weighted distance subject to facility capacity constraints.
 //! Supports either fixed number of facilities (p) or facility opening costs.
+//! Supports an optional maximum distance constraint.
 
 use extendr_api::prelude::*;
 use highs::{HighsModelStatus, Sense, RowProblem, Col};
@@ -17,6 +18,7 @@ pub fn solve(
     capacities: &[f64],
     n_facilities: usize,
     facility_costs: Option<&[f64]>,
+    max_distance: Option<f64>,
 ) -> List {
     let n_demand = cost_matrix.nrows();
     let n_fac = cost_matrix.ncols();
@@ -41,6 +43,15 @@ pub fn solve(
         );
     }
 
+    // Compute reachable facilities for each demand point
+    let reachable: Vec<Vec<usize>> = (0..n_demand)
+        .map(|i| {
+            (0..n_fac)
+                .filter(|&j| max_distance.map_or(true, |d| cost_matrix[[i, j]] <= d))
+                .collect()
+        })
+        .collect();
+
     // Create row-based problem
     let mut pb = RowProblem::new();
 
@@ -53,13 +64,19 @@ pub fn solve(
         })
         .collect();
 
-    // x[i][j] = fraction of demand i served by facility j (continuous)
-    let mut x_cols: Vec<Vec<Col>> = Vec::with_capacity(n_demand);
+    // x[i][j] = fraction of demand i served by facility j (continuous, only for reachable pairs)
+    // Forward index: demand -> [(facility_idx, Col)]
+    let mut x_cols: Vec<Vec<(usize, Col)>> = Vec::with_capacity(n_demand);
+    // Reverse index: facility -> [(demand_idx, Col)] for efficient per-facility iteration
+    let mut fac_to_demands: Vec<Vec<(usize, Col)>> = vec![Vec::new(); n_fac];
+
     for i in 0..n_demand {
-        let row_cols: Vec<Col> = (0..n_fac)
-            .map(|j| {
+        let row_cols: Vec<(usize, Col)> = reachable[i].iter()
+            .map(|&j| {
                 let obj_coeff = weights[i] * cost_matrix[[i, j]];
-                pb.add_column(obj_coeff, 0.0..=1.0)
+                let col = pb.add_column(obj_coeff, 0.0..=1.0);
+                fac_to_demands[j].push((i, col));
+                (j, col)
             })
             .collect();
         x_cols.push(row_cols);
@@ -72,25 +89,25 @@ pub fn solve(
     }
 
     // Constraint 2: sum_j x[i][j] = 1 for all i (each demand fully served)
+    // R validates that every demand has at least one reachable facility
     for i in 0..n_demand {
-        let terms: Vec<(Col, f64)> = x_cols[i].iter().map(|&c| (c, 1.0)).collect();
+        let terms: Vec<(Col, f64)> = x_cols[i].iter().map(|&(_, c)| (c, 1.0)).collect();
         pb.add_row(1.0..=1.0, terms);
     }
 
-    // Constraint 3: x[i][j] <= y[j] for all i,j (can only assign to open facility)
-    // Sparse: only 2 non-zeros per constraint
+    // Constraint 3: x[i][j] <= y[j] for all reachable (i,j)
     for i in 0..n_demand {
-        for j in 0..n_fac {
-            let terms = vec![(x_cols[i][j], 1.0), (y_cols[j], -1.0)];
+        for &(j, x_col) in &x_cols[i] {
+            let terms = vec![(x_col, 1.0), (y_cols[j], -1.0)];
             pb.add_row(..=0.0, terms);
         }
     }
 
     // Constraint 4: CAPACITY: sum_i (weight[i] * x[i][j]) <= capacity[j] * y[j] for all j
-    // Rewritten: sum_i (weight[i] * x[i][j]) - capacity[j] * y[j] <= 0
+    // Uses reverse index for O(n_demand) per facility instead of scanning all pairs
     for j in 0..n_fac {
-        let mut terms: Vec<(Col, f64)> = (0..n_demand)
-            .map(|i| (x_cols[i][j], weights[i]))
+        let mut terms: Vec<(Col, f64)> = fac_to_demands[j].iter()
+            .map(|&(i, col)| (col, weights[i]))
             .collect();
         terms.push((y_cols[j], -capacities[j]));
         pb.add_row(..=0.0, terms);
@@ -116,10 +133,10 @@ pub fn solve(
             // Extract assignments - return primary assignment (facility serving most of demand i)
             let assignments: Vec<i32> = (0..n_demand)
                 .map(|i| {
-                    let mut best_j = 0;
+                    let mut best_j = 0usize;
                     let mut best_val = 0.0;
-                    for j in 0..n_fac {
-                        let val = sol[x_cols[i][j]];
+                    for &(j, col) in &x_cols[i] {
+                        let val = sol[col];
                         if val > best_val {
                             best_val = val;
                             best_j = j;
@@ -129,11 +146,12 @@ pub fn solve(
                 })
                 .collect();
 
-            // Extract allocation fractions for split demands
-            let mut allocation_fractions: Vec<f64> = Vec::with_capacity(n_demand * n_fac);
-            for i in 0..n_demand {
-                for j in 0..n_fac {
-                    allocation_fractions.push(sol[x_cols[i][j]]);
+            // Extract allocation fractions (full n_demand x n_fac matrix, 0.0 for unreachable)
+            // Build from reverse index for efficiency
+            let mut allocation_fractions: Vec<f64> = vec![0.0; n_demand * n_fac];
+            for j in 0..n_fac {
+                for &(i, col) in &fac_to_demands[j] {
+                    allocation_fractions[i * n_fac + j] = sol[col];
                 }
             }
 
@@ -141,16 +159,16 @@ pub fn solve(
             let n_split: i32 = (0..n_demand)
                 .filter(|&i| {
                     let assigned_j = (assignments[i] - 1) as usize;
-                    sol[x_cols[i][assigned_j]] < 0.999
+                    allocation_fractions[i * n_fac + assigned_j] < 0.999
                 })
                 .count() as i32;
 
-            // Compute utilization of each facility
+            // Compute utilization of each facility using reverse index
             let mut utilizations: Vec<f64> = vec![0.0; n_fac];
             for j in 0..n_fac {
                 if sol[y_cols[j]] > 0.5 {
-                    let total_assigned: f64 = (0..n_demand)
-                        .map(|i| weights[i] * sol[x_cols[i][j]])
+                    let total_assigned: f64 = fac_to_demands[j].iter()
+                        .map(|&(i, col)| weights[i] * sol[col])
                         .sum();
                     utilizations[j] = total_assigned / capacities[j];
                 }
@@ -159,8 +177,8 @@ pub fn solve(
             // Compute mean distance (weighted)
             let total_weighted_dist: f64 = (0..n_demand)
                 .map(|i| {
-                    let dist: f64 = (0..n_fac)
-                        .map(|j| sol[x_cols[i][j]] * cost_matrix[[i, j]])
+                    let dist: f64 = x_cols[i].iter()
+                        .map(|&(j, col)| sol[col] * cost_matrix[[i, j]])
                         .sum();
                     weights[i] * dist
                 })

@@ -1,35 +1,45 @@
 //! P-Median Problem
 //!
 //! Minimize total weighted distance by locating exactly p facilities.
+//! Supports an optional maximum distance constraint.
 
 use extendr_api::prelude::*;
 use highs::{HighsModelStatus, Sense, RowProblem, Col};
 
 /// Solve P-Median facility location problem
-pub fn solve(cost_matrix: RMatrix<f64>, weights: &[f64], n_facilities: usize) -> List {
+pub fn solve(cost_matrix: RMatrix<f64>, weights: &[f64], n_facilities: usize, max_distance: Option<f64>) -> List {
     let n_demand = cost_matrix.nrows();
     let n_fac = cost_matrix.ncols();
     let p = n_facilities;
+
+    // Compute reachable facilities for each demand point
+    let reachable: Vec<Vec<usize>> = (0..n_demand)
+        .map(|i| {
+            (0..n_fac)
+                .filter(|&j| max_distance.map_or(true, |d| cost_matrix[[i, j]] <= d))
+                .collect()
+        })
+        .collect();
 
     // Create row-based problem
     let mut pb = RowProblem::new();
 
     // Variables:
     // y[j] = 1 if facility j is selected (j = 0..n_fac-1)
-    // x[i][j] = 1 if demand i is served by facility j
+    // x[i][j] = 1 if demand i is served by facility j (only for reachable pairs)
 
     // Add y variables (binary facility selection)
     let y_cols: Vec<Col> = (0..n_fac)
         .map(|_| pb.add_integer_column(0.0, 0.0..=1.0))  // obj coeff = 0 for y
         .collect();
 
-    // Add x variables (continuous assignment) with objective coefficients
-    let mut x_cols: Vec<Vec<Col>> = Vec::with_capacity(n_demand);
+    // Add x variables (continuous assignment) only for reachable pairs
+    let mut x_cols: Vec<Vec<(usize, Col)>> = Vec::with_capacity(n_demand);
     for i in 0..n_demand {
-        let row_cols: Vec<Col> = (0..n_fac)
-            .map(|j| {
+        let row_cols: Vec<(usize, Col)> = reachable[i].iter()
+            .map(|&j| {
                 let obj_coeff = weights[i] * cost_matrix[[i, j]];
-                pb.add_column(obj_coeff, 0.0..=1.0)  // continuous
+                (j, pb.add_column(obj_coeff, 0.0..=1.0))
             })
             .collect();
         x_cols.push(row_cols);
@@ -42,16 +52,16 @@ pub fn solve(cost_matrix: RMatrix<f64>, weights: &[f64], n_facilities: usize) ->
     }
 
     // Constraint 2: sum_j x[i][j] = 1 for all i (each demand assigned to exactly one facility)
+    // R validates that every demand has at least one reachable facility
     for i in 0..n_demand {
-        let terms: Vec<(Col, f64)> = x_cols[i].iter().map(|&c| (c, 1.0)).collect();
+        let terms: Vec<(Col, f64)> = x_cols[i].iter().map(|&(_, c)| (c, 1.0)).collect();
         pb.add_row(1.0..=1.0, terms);
     }
 
-    // Constraint 3: x[i][j] <= y[j] for all i,j (can only assign to open facility)
-    // Sparse: only 2 non-zeros per constraint!
+    // Constraint 3: x[i][j] <= y[j] for all reachable (i,j)
     for i in 0..n_demand {
-        for j in 0..n_fac {
-            let terms = vec![(x_cols[i][j], 1.0), (y_cols[j], -1.0)];
+        for &(j, x_col) in &x_cols[i] {
+            let terms = vec![(x_col, 1.0), (y_cols[j], -1.0)];
             pb.add_row(..=0.0, terms);
         }
     }
@@ -75,10 +85,10 @@ pub fn solve(cost_matrix: RMatrix<f64>, weights: &[f64], n_facilities: usize) ->
             // Extract assignments (which facility serves each demand)
             let assignments: Vec<i32> = (0..n_demand)
                 .map(|i| {
-                    let mut best_j = 0;
+                    let mut best_j = 0usize;
                     let mut best_val = 0.0;
-                    for j in 0..n_fac {
-                        let val = sol[x_cols[i][j]];
+                    for &(j, col) in &x_cols[i] {
+                        let val = sol[col];
                         if val > best_val {
                             best_val = val;
                             best_j = j;

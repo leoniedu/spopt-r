@@ -10,6 +10,10 @@
 #' @param weight_col Character. Column name in `demand` containing demand weights.
 #' @param cost_matrix Optional. Pre-computed distance matrix.
 #' @param distance_metric Distance metric: "euclidean" (default) or "manhattan".
+#' @param max_distance Optional numeric. Maximum allowable distance from a demand
+#'   point to its assigned facility. When specified, demand can only be assigned
+#'   to facilities within this radius. An error is raised if any demand point has
+#'   no facility within `max_distance`.
 #' @param verbose Logical. Print solver progress.
 #'
 #' @return A list with two sf objects:
@@ -37,6 +41,11 @@
 #' distance from demand i to facility j, \eqn{x_{ij} = 1} if demand i is
 #' assigned to facility j, and \eqn{y_j = 1} if facility j is selected.
 #'
+#' When `max_distance` is specified, the model excludes assignment variables
+#' \eqn{x_{ij}} for pairs where \eqn{d_{ij} > \text{max\_distance}}. This
+#' reduces the problem size and enforces a hard geographic radius constraint,
+#' similar to warehouse location models.
+#'
 #' @section Use Cases:
 #' P-median is appropriate when minimizing total travel cost or distance:
 #' \itemize{
@@ -48,6 +57,8 @@
 #'     travel time across a population
 #'   \item **Service depots**: Locating maintenance facilities to minimize
 #'     total technician travel to service calls
+#'   \item **Survey zones**: With `max_distance`, defining zones where each unit
+#'     is within a maximum radius of its assigned center
 #' }
 #'
 #' For equity-focused objectives where no demand point should be too far,
@@ -64,6 +75,10 @@
 #'
 #' # Locate 5 facilities minimizing total weighted distance
 #' result <- p_median(demand, facilities, n_facilities = 5, weight_col = "population")
+#'
+#' # With a maximum distance constraint
+#' result <- p_median(demand, facilities, n_facilities = 5,
+#'                    weight_col = "population", max_distance = 0.3)
 #'
 #' # Mean distance to assigned facility
 #' attr(result, "spopt")$mean_distance
@@ -83,6 +98,7 @@ p_median <- function(demand,
                      weight_col,
                      cost_matrix = NULL,
                      distance_metric = "euclidean",
+                     max_distance = NULL,
                      verbose = FALSE) {
   # Input validation
   if (!inherits(demand, "sf")) {
@@ -96,30 +112,15 @@ p_median <- function(demand,
   }
 
   weights <- as.numeric(demand[[weight_col]])
+  if (any(is.na(weights))) {
+    stop("Weight column contains NA values", call. = FALSE)
+  }
 
   if (is.null(cost_matrix)) {
     cost_matrix <- distance_matrix(demand, facilities, type = distance_metric)
   }
 
-  # Validate cost matrix
-  if (any(is.na(cost_matrix))) {
-    n_na <- sum(is.na(cost_matrix))
-    warning(sprintf(
-      "cost_matrix contains %d NA values (unreachable points). Replacing with large value.",
-      n_na
-    ))
-    max_cost <- max(cost_matrix, na.rm = TRUE)
-    cost_matrix[is.na(cost_matrix)] <- max_cost * 100
-  }
-  if (any(is.infinite(cost_matrix))) {
-    n_inf <- sum(is.infinite(cost_matrix))
-    warning(sprintf(
-      "cost_matrix contains %d Inf values. Replacing with large value.",
-      n_inf
-    ))
-    finite_max <- max(cost_matrix[is.finite(cost_matrix)])
-    cost_matrix[is.infinite(cost_matrix)] <- finite_max * 100
-  }
+  cost_matrix <- sanitize_cost_matrix(cost_matrix)
 
   n_demand <- nrow(demand)
   n_fac <- nrow(facilities)
@@ -128,9 +129,13 @@ p_median <- function(demand,
     stop("`n_facilities` cannot exceed number of candidate facilities", call. = FALSE)
   }
 
+  if (!is.null(max_distance)) {
+    validate_max_distance(max_distance, cost_matrix)
+  }
+
   start_time <- Sys.time()
 
-  result <- rust_p_median(cost_matrix, weights, as.integer(n_facilities))
+  result <- rust_p_median(cost_matrix, weights, as.integer(n_facilities), max_distance)
 
   end_time <- Sys.time()
 
@@ -145,7 +150,7 @@ p_median <- function(demand,
   facilities_result$.n_assigned <- 0L
 
   for (j in selected_indices) {
-    facilities_result$.n_assigned[j] <- sum(result$assignments == j)
+    facilities_result$.n_assigned[j] <- sum(result$assignments == j, na.rm = TRUE)
   }
 
   output <- list(
@@ -159,6 +164,7 @@ p_median <- function(demand,
     n_facilities = n_facilities,
     objective = result$objective,
     mean_distance = result$mean_distance,
+    max_distance = max_distance,
     solve_time = as.numeric(difftime(end_time, start_time, units = "secs"))
   )
 

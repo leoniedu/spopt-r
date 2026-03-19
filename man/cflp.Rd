@@ -13,6 +13,7 @@ cflp(
   facility_cost_col = NULL,
   cost_matrix = NULL,
   distance_metric = "euclidean",
+  max_distance = NULL,
   verbose = FALSE
 )
 }
@@ -37,6 +38,11 @@ the solver determines the optimal number of facilities to minimize total cost.}
 \item{cost_matrix}{Optional. Pre-computed distance/cost matrix (demand x facilities).}
 
 \item{distance_metric}{Distance metric: "euclidean" (default) or "manhattan".}
+
+\item{max_distance}{Optional numeric. Maximum allowable distance from a demand
+point to its assigned facility. When specified, demand can only be assigned
+to facilities within this radius. An error is raised if any demand point has
+no facility within \code{max_distance}.}
 
 \item{verbose}{Logical. Print solver progress.}
 }

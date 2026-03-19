@@ -1,0 +1,186 @@
+---
+title: "Zone allocation with allocate_zones"
+format: html
+editor: visual
+bibliography: references.bib
+params:
+  n_sample: 100
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+options(tigris_use_cache = TRUE)
+if (!requireNamespace("spopt", quietly = TRUE) ||
+    !"allocate_zones" %in% getNamespaceExports("spopt")) {
+  devtools::load_all(quiet = TRUE)
+}
+n_sample <- params$n_sample
+```
+
+`allocate_zones()` partitions geographic units into zones, each with a center, such that no unit exceeds `max_distance` from its center. It automatically discovers the minimum number of centers via LSCP, then assigns units using one of three methods:
+
+-   **`"nearest"`**: Greedy nearest-center assignment (fastest)
+-   **`"p_median"`**: Minimizes total weighted distance (optimal)
+-   **`"cflp"`**: Adds capacity constraints (capped workloads)
+
+This vignette demonstrates all three methods with TSP-based zone sequencing using Census tracts from Tarrant County, Texas.
+
+## Setup
+
+```{r data}
+library(spopt)
+library(tidycensus)
+library(tidyverse)
+library(sf)
+
+tarrant <- get_acs(
+  geography = "tract",
+  variables = "B01003_001",
+  state = "TX",
+  county = "Tarrant",
+  geometry = TRUE,
+  year = 2023
+) |>
+  filter(estimate > 0) |>
+  rename(population = estimate)
+
+zones_sf <- tarrant |>
+  st_centroid() |>
+  select(GEOID, population)
+
+# Sample for faster rendering
+set.seed(42)
+zones_sf <- zones_sf |> slice_sample(n = min(n_sample, nrow(zones_sf)))
+tarrant <- tarrant |> filter(GEOID %in% zones_sf$GEOID)
+
+dm <- units::drop_units(st_distance(zones_sf)) / 1000
+cat(nrow(zones_sf), "tracts\n")
+```
+
+## Three methods compared
+
+```{r solve}
+result_near <- allocate_zones(zones_sf, max_distance = 5,
+                              cost_matrix = dm, verbose = TRUE)
+
+result_opt <- allocate_zones(zones_sf, max_distance = 5, method = "p_median",
+                             weight_col = "population",
+                             cost_matrix = dm, verbose = TRUE)
+
+result_cap <- allocate_zones(zones_sf, max_distance = 5, method = "cflp",
+                             capacity = 5,
+                             cost_matrix = dm, verbose = TRUE)
+```
+
+```{r compare}
+pop <- zones_sf$population
+m1 <- attr(result_near, "spopt")
+m2 <- attr(result_opt, "spopt")
+m3 <- attr(result_cap, "spopt")
+
+cat(sprintf("%-25s %10s %10s %10s\n", "", "nearest", "p_median", "cflp(5)"))
+cat(sprintf("%-25s %10d %10d %10d\n", "Centers",
+    m1$n_selected, m2$n_selected, m3$n_selected))
+cat(sprintf("%-25s %10.0f %10.0f %10.0f\n", "Pop-weighted distance",
+    sum(pop * result_near$zones$.distance),
+    sum(pop * result_opt$zones$.distance),
+    sum(pop * result_cap$zones$.distance)))
+cat(sprintf("%-25s %10d %10d %10d\n", "Max tracts/center",
+    max(table(result_near$zones$.center)),
+    max(table(result_opt$zones$.center)),
+    max(table(result_cap$zones$.center))))
+cat(sprintf("%-25s %10.3f %10.3f %10.3f\n", "Solve time (s)",
+    m1$solve_time, m2$solve_time, m3$solve_time))
+```
+
+## Mapping
+
+```{r map, fig.width=14, fig.height=5, out.width="100%"}
+map_near <- tarrant |>
+  left_join(st_drop_geometry(result_near$zones) |>
+              select(GEOID, zone = .center), by = "GEOID") |>
+  mutate(method = "nearest")
+
+map_opt <- tarrant |>
+  left_join(st_drop_geometry(result_opt$zones) |>
+              select(GEOID, zone = .center), by = "GEOID") |>
+  mutate(method = "p_median")
+
+map_cap <- tarrant |>
+  left_join(st_drop_geometry(result_cap$zones) |>
+              select(GEOID, zone = .center), by = "GEOID") |>
+  mutate(method = "cflp (cap=5)")
+
+bind_rows(map_near, map_opt, map_cap) |>
+  mutate(method = factor(method, levels = c("nearest", "p_median", "cflp (cap=5)"))) |>
+  ggplot() +
+  geom_sf(aes(fill = factor(zone)), color = "white", linewidth = 0.1) +
+  scale_fill_discrete(guide = "none") +
+  facet_wrap(~method, ncol = 3) +
+  theme_void()
+```
+
+## Zone sequencing
+
+When `sequence = TRUE`, zones and tracts are ordered via TSP for geographic routing. Inter-zone distances use minimum pairwise distance between zone members (matching the surveyzones approach). Within each zone, tracts are oriented so the entry tract is closest to the previous zone's exit.
+
+```{r sequence}
+result_seq <- allocate_zones(zones_sf, max_distance = 5, method = "p_median",
+                             weight_col = "population",
+                             cost_matrix = dm, sequence = TRUE, verbose = TRUE)
+
+# Show first 15 tracts in visit order
+seq_df <- st_drop_geometry(result_seq$zones) |>
+  select(GEOID, .center, .zone_order, .tract_order) |>
+  arrange(.zone_order, .tract_order)
+head(seq_df, 15)
+```
+
+```{r seqmap, fig.width=8, fig.height=6, out.width="100%"}
+map_seq <- tarrant |>
+  left_join(st_drop_geometry(result_seq$zones) |>
+              select(GEOID, zone_order = .zone_order, tract_order = .tract_order,
+                     zone_id = .zone_id),
+            by = "GEOID")
+
+# Build visit path as a line connecting centroids in sequence
+centroids <- st_centroid(map_seq) |>
+  arrange(zone_order, tract_order)
+visit_line <- centroids |>
+  summarise(geometry = st_cast(st_combine(geometry), "LINESTRING"))
+
+ggplot() +
+  geom_sf(data = map_seq, aes(fill = zone_order), color = "white", linewidth = 0.1) +
+  geom_sf(data = visit_line, color = "black", linewidth = 0.3, alpha = 0.5) +
+  geom_sf_text(data = map_seq, aes(label = zone_id), size = 1.8, color = "black") +
+  scale_fill_viridis_c(option = "turbo", name = "Zone\norder") +
+  labs(title = "Visit sequence (zone.tract labels, path line)") +
+  theme_void()
+```
+
+Labels show `zone_order.tract_order` (e.g., `3.02` = zone 3, tract 2). The black line traces the full visit path across all zones in sequence.
+
+## With partitions
+
+```{r partition}
+coords <- st_coordinates(zones_sf)
+zones_sf$region <- ifelse(coords[, 1] < median(coords[, 1]), "west", "east")
+
+result_part <- allocate_zones(zones_sf, max_distance = 5, method = "p_median",
+                              partition_col = "region",
+                              cost_matrix = dm, verbose = TRUE)
+
+cat("Centers (partitioned):", attr(result_part, "spopt")$n_selected, "\n")
+cat("Centers (unpartitioned):", m2$n_selected, "\n")
+```
+
+## Method summary
+
+|                 | `"nearest"`       | `"p_median"`        | `"cflp"`           |
+|------------------|------------------|------------------|------------------|
+| **K discovery** | LSCP              | LSCP                | LSCP + increment   |
+| **Assignment**  | Nearest (greedy)  | P-median (optimal)  | CFLP (optimal)     |
+| **Weights**     | Not used          | Optional            | Optional           |
+| **Capacity**    | No                | No                  | Yes (`capacity`)   |
+| **Sequencing**  | `sequence = TRUE` | `sequence = TRUE`   | `sequence = TRUE`  |
+| **Best for**    | Speed             | Non-uniform weights | Capped workloads   |

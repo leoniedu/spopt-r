@@ -1,6 +1,52 @@
 # Internal utility functions for spopt
 # These are not exported and not documented
 
+# Sanitize cost matrix: replace NA and Inf with large finite values
+# Returns the cleaned matrix (with warnings if values were replaced)
+sanitize_cost_matrix <- function(cost_matrix) {
+  n_na <- sum(is.na(cost_matrix))
+  if (n_na > 0) {
+    warning(sprintf(
+      "cost_matrix contains %d NA values (unreachable points). Replacing with large value.",
+      n_na
+    ))
+    max_cost <- max(cost_matrix, na.rm = TRUE)
+    cost_matrix[is.na(cost_matrix)] <- max_cost * 100
+  }
+  n_inf <- sum(is.infinite(cost_matrix))
+  if (n_inf > 0) {
+    warning(sprintf(
+      "cost_matrix contains %d Inf values. Replacing with large value.",
+      n_inf
+    ))
+    finite_max <- max(cost_matrix[is.finite(cost_matrix)])
+    cost_matrix[is.infinite(cost_matrix)] <- finite_max * 100
+  }
+  cost_matrix
+}
+
+# Validate max_distance and check reachability against a cost matrix
+# Raises an error if max_distance is invalid or any row has no reachable column.
+# label: context string for error messages (e.g., "demand point(s)", "zone(s)")
+validate_max_distance <- function(max_distance, cost_matrix = NULL,
+                                  label = "demand point(s)") {
+  if (!is.numeric(max_distance) || length(max_distance) != 1 ||
+      is.na(max_distance) || max_distance <= 0) {
+    stop("`max_distance` must be a single positive number", call. = FALSE)
+  }
+  if (!is.null(cost_matrix)) {
+    reachable_count <- rowSums(cost_matrix <= max_distance)
+    uncovered <- which(reachable_count == 0)
+    if (length(uncovered) > 0) {
+      stop(sprintf(
+        "%d %s have no facility within max_distance = %g (indices: %s)",
+        length(uncovered), label, max_distance,
+        paste(head(uncovered, 5), collapse = ", ")
+      ), call. = FALSE)
+    }
+  }
+}
+
 # Validate and clean sf data for regionalization
 # Removes empty geometries (with warning) and checks for NA values
 validate_regionalization_data <- function(data, check_cols, call_name = "regionalization") {
