@@ -135,7 +135,7 @@
 <span><span class="co"># View selected facility locations</span></span>
 <span><span class="va">result</span><span class="op">$</span><span class="va">facilities</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">.selected</span><span class="op">)</span></span></code></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Simple feature collection with 5 features and 7 fields
+<pre><code>Simple feature collection with 5 features and 8 fields
 Geometry type: POINT
 Dimension:     XY
 Bounding box:  xmin: -97.40206 ymin: 32.66538 xmax: -97.12351 ymax: 32.89751
@@ -146,12 +146,12 @@ Geodetic CRS:  NAD83
 3 48439110402 Census Tract 1104.02; Tarrant County; Texas B01003_001     5387
 4 48439105800    Census Tract 1058; Tarrant County; Texas B01003_001     4430
 5 48439113946 Census Tract 1139.46; Tarrant County; Texas B01003_001     6509
-   moe                   geometry .selected .n_assigned
-1 1007 POINT (-97.12453 32.66618)      TRUE         112
-2  703 POINT (-97.12351 32.84844)      TRUE          90
-3   16 POINT (-97.40206 32.80275)      TRUE          69
-4  698 POINT (-97.34284 32.66538)      TRUE         107
-5 3880 POINT (-97.28117 32.89751)      TRUE          71</code></pre>
+   moe                   geometry .selected .fixed .n_assigned
+1 1007 POINT (-97.12453 32.66618)      TRUE  FALSE         112
+2  703 POINT (-97.12351 32.84844)      TRUE  FALSE          90
+3   16 POINT (-97.40206 32.80275)      TRUE  FALSE          69
+4  698 POINT (-97.34284 32.66538)      TRUE  FALSE         107
+5 3880 POINT (-97.28117 32.89751)      TRUE  FALSE          71</code></pre>
 </div>
 </div>
 <p>The <code><a href="../reference/p_median.html">p_median()</a></code> function returns a list with allocated demand points and selected facilities. Each demand point is assigned to its nearest selected facility, and the solution minimizes the total population-weighted distance.</p>

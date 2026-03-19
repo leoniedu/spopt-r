@@ -15,6 +15,7 @@ p_center(
   cost_matrix = NULL,
   distance_metric = "euclidean",
   method = c("binary_search", "mip"),
+  fixed_col = NULL,
   verbose = FALSE
 )
 ```
@@ -45,6 +46,13 @@ p_center(
 
   Algorithm to use: "binary_search" (default, faster) or "mip" (direct
   mixed-integer programming formulation).
+
+- fixed_col:
+
+  Optional column name in `facilities` indicating which facilities are
+  pre-selected. The column should be logical (`TRUE` for fixed) or
+  character (`"required"`/`"candidate"`). Fixed facilities are always
+  selected; the solver optimizes the remaining slots.
 
 - verbose:
 

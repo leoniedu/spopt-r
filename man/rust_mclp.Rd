@@ -4,7 +4,7 @@
 \alias{rust_mclp}
 \title{Solve MCLP (Maximum Coverage Location Problem)}
 \usage{
-rust_mclp(cost_matrix, weights, service_radius, n_facilities)
+rust_mclp(cost_matrix, weights, service_radius, n_facilities, fixed_facilities)
 }
 \arguments{
 \item{cost_matrix}{Cost/distance matrix (demand x facilities)}
@@ -14,6 +14,8 @@ rust_mclp(cost_matrix, weights, service_radius, n_facilities)
 \item{service_radius}{Maximum service distance}
 
 \item{n_facilities}{Number of facilities to locate}
+
+\item{fixed_facilities}{Optional indices of pre-selected facilities (1-based, NULL for none)}
 }
 \value{
 List with selected facilities and coverage

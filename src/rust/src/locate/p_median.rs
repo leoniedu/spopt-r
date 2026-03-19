@@ -1,16 +1,19 @@
 //! P-Median Problem
 //!
 //! Minimize total weighted distance by locating exactly p facilities.
-//! Supports an optional maximum distance constraint.
+//! Supports fixed facilities and an optional maximum distance constraint.
 
 use extendr_api::prelude::*;
 use highs::{HighsModelStatus, Sense, RowProblem, Col};
 
 /// Solve P-Median facility location problem
-pub fn solve(cost_matrix: RMatrix<f64>, weights: &[f64], n_facilities: usize, max_distance: Option<f64>) -> List {
+pub fn solve(cost_matrix: RMatrix<f64>, weights: &[f64], n_facilities: usize, fixed: &[usize], max_distance: Option<f64>) -> List {
     let n_demand = cost_matrix.nrows();
     let n_fac = cost_matrix.ncols();
     let p = n_facilities;
+
+    // Build fixed-facility mask
+    let is_fixed: Vec<bool> = (0..n_fac).map(|j| fixed.contains(&j)).collect();
 
     // Compute reachable facilities for each demand point
     let reachable: Vec<Vec<usize>> = (0..n_demand)
@@ -28,9 +31,12 @@ pub fn solve(cost_matrix: RMatrix<f64>, weights: &[f64], n_facilities: usize, ma
     // y[j] = 1 if facility j is selected (j = 0..n_fac-1)
     // x[i][j] = 1 if demand i is served by facility j (only for reachable pairs)
 
-    // Add y variables (binary facility selection)
+    // Add y variables (binary facility selection, forced for fixed)
     let y_cols: Vec<Col> = (0..n_fac)
-        .map(|_| pb.add_integer_column(0.0, 0.0..=1.0))  // obj coeff = 0 for y
+        .map(|j| {
+            let bounds = if is_fixed[j] { 1.0..=1.0 } else { 0.0..=1.0 };
+            pb.add_integer_column(0.0, bounds)
+        })
         .collect();
 
     // Add x variables (continuous assignment) only for reachable pairs

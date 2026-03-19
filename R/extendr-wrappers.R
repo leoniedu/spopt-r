@@ -144,10 +144,11 @@ rust_max_p <- function(attrs, threshold_var, threshold, adj_i, adj_j, n_iteratio
 #' @param cost_matrix Cost/distance matrix (demand x facilities)
 #' @param weights Demand weights
 #' @param n_facilities Number of facilities to locate (p)
+#' @param fixed_facilities Optional indices of pre-selected facilities (1-based, NULL for none)
 #' @param max_distance Optional maximum distance for assignments
 #' @return List with selected facilities and assignments
 #' @export
-rust_p_median <- function(cost_matrix, weights, n_facilities, max_distance) .Call(wrap__rust_p_median, cost_matrix, weights, n_facilities, max_distance)
+rust_p_median <- function(cost_matrix, weights, n_facilities, fixed_facilities, max_distance) .Call(wrap__rust_p_median, cost_matrix, weights, n_facilities, fixed_facilities, max_distance)
 
 #' Solve LSCP (Location Set Covering Problem)
 #'
@@ -163,18 +164,20 @@ rust_lscp <- function(cost_matrix, service_radius) .Call(wrap__rust_lscp, cost_m
 #' @param weights Demand weights
 #' @param service_radius Maximum service distance
 #' @param n_facilities Number of facilities to locate
+#' @param fixed_facilities Optional indices of pre-selected facilities (1-based, NULL for none)
 #' @return List with selected facilities and coverage
 #' @export
-rust_mclp <- function(cost_matrix, weights, service_radius, n_facilities) .Call(wrap__rust_mclp, cost_matrix, weights, service_radius, n_facilities)
+rust_mclp <- function(cost_matrix, weights, service_radius, n_facilities, fixed_facilities) .Call(wrap__rust_mclp, cost_matrix, weights, service_radius, n_facilities, fixed_facilities)
 
 #' Solve P-Center facility location problem
 #'
 #' @param cost_matrix Cost/distance matrix (demand x facilities)
 #' @param n_facilities Number of facilities to locate
 #' @param method Algorithm method: "binary_search" (default) or "mip"
+#' @param fixed_facilities Optional indices of pre-selected facilities (1-based, NULL for none)
 #' @return List with selected facilities, assignments, and max distance
 #' @export
-rust_p_center <- function(cost_matrix, n_facilities, method) .Call(wrap__rust_p_center, cost_matrix, n_facilities, method)
+rust_p_center <- function(cost_matrix, n_facilities, method, fixed_facilities) .Call(wrap__rust_p_center, cost_matrix, n_facilities, method, fixed_facilities)
 
 #' Solve P-Dispersion facility location problem
 #'

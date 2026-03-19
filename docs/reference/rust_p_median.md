@@ -5,7 +5,7 @@ Solve P-Median facility location problem
 ## Usage
 
 ``` r
-rust_p_median(cost_matrix, weights, n_facilities)
+rust_p_median(cost_matrix, weights, n_facilities, fixed_facilities)
 ```
 
 ## Arguments
@@ -21,6 +21,10 @@ rust_p_median(cost_matrix, weights, n_facilities)
 - n_facilities:
 
   Number of facilities to locate (p)
+
+- fixed_facilities:
+
+  Optional indices of pre-selected facilities (1-based, NULL for none)
 
 ## Value
 

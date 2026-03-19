@@ -5,7 +5,7 @@ Solve P-Center facility location problem
 ## Usage
 
 ``` r
-rust_p_center(cost_matrix, n_facilities, method)
+rust_p_center(cost_matrix, n_facilities, method, fixed_facilities)
 ```
 
 ## Arguments
@@ -21,6 +21,10 @@ rust_p_center(cost_matrix, n_facilities, method)
 - method:
 
   Algorithm method: "binary_search" (default) or "mip"
+
+- fixed_facilities:
+
+  Optional indices of pre-selected facilities (1-based, NULL for none)
 
 ## Value
 

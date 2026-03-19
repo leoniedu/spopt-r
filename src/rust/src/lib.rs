@@ -111,11 +111,55 @@ fn rust_skater(
     )
 }
 
+/// Parse and validate fixed_facilities from R (1-based) to Rust (0-based)
+fn parse_fixed_facilities(
+    fixed: Nullable<Vec<i32>>,
+    n_candidates: usize,
+    requested_p: usize,
+) -> Vec<usize> {
+    let raw = match fixed.into_option() {
+        None => return Vec::new(),
+        Some(v) => v,
+    };
+    if raw.is_empty() {
+        return Vec::new();
+    }
+    // Validate range (1-based from R)
+    for &idx in &raw {
+        if idx < 1 || idx as usize > n_candidates {
+            extendr_api::throw_r_error(format!(
+                "fixed_facilities index {} is out of range [1, {}]",
+                idx, n_candidates
+            ));
+        }
+    }
+    // Check duplicates
+    let mut seen = std::collections::HashSet::new();
+    for &idx in &raw {
+        if !seen.insert(idx) {
+            extendr_api::throw_r_error(format!(
+                "fixed_facilities contains duplicate index {}",
+                idx
+            ));
+        }
+    }
+    // Check count
+    if raw.len() > requested_p {
+        extendr_api::throw_r_error(format!(
+            "fixed_facilities has {} entries but only {} facilities requested",
+            raw.len(), requested_p
+        ));
+    }
+    // Convert to 0-based
+    raw.iter().map(|&idx| (idx - 1) as usize).collect()
+}
+
 /// Solve P-Median facility location problem
 ///
 /// @param cost_matrix Cost/distance matrix (demand x facilities)
 /// @param weights Demand weights
 /// @param n_facilities Number of facilities to locate (p)
+/// @param fixed_facilities Optional indices of pre-selected facilities (1-based)
 /// @param max_distance Optional maximum distance for assignments
 /// @return List with selected facilities and assignments
 /// @export
@@ -124,9 +168,13 @@ fn rust_p_median(
     cost_matrix: RMatrix<f64>,
     weights: Vec<f64>,
     n_facilities: i32,
+    fixed_facilities: Nullable<Vec<i32>>,
     max_distance: Nullable<f64>,
 ) -> List {
-    locate::p_median::solve(cost_matrix, &weights, n_facilities as usize, max_distance.into_option())
+    let n_fac = cost_matrix.ncols();
+    let p = n_facilities as usize;
+    let fixed = parse_fixed_facilities(fixed_facilities, n_fac, p);
+    locate::p_median::solve(cost_matrix, &weights, p, &fixed, max_distance.into_option())
 }
 
 /// Solve LSCP (Location Set Covering Problem)
@@ -154,8 +202,12 @@ fn rust_mclp(
     weights: Vec<f64>,
     service_radius: f64,
     n_facilities: i32,
+    fixed_facilities: Nullable<Vec<i32>>,
 ) -> List {
-    locate::coverage::solve_mclp(cost_matrix, &weights, service_radius, n_facilities as usize)
+    let n_fac = cost_matrix.ncols();
+    let p = n_facilities as usize;
+    let fixed = parse_fixed_facilities(fixed_facilities, n_fac, p);
+    locate::coverage::solve_mclp(cost_matrix, &weights, service_radius, p, &fixed)
 }
 
 /// Solve P-Center facility location problem
@@ -170,8 +222,12 @@ fn rust_p_center(
     cost_matrix: RMatrix<f64>,
     n_facilities: i32,
     method: &str,
+    fixed_facilities: Nullable<Vec<i32>>,
 ) -> List {
-    locate::p_center::solve(cost_matrix, n_facilities as usize, method)
+    let n_fac = cost_matrix.ncols();
+    let p = n_facilities as usize;
+    let fixed = parse_fixed_facilities(fixed_facilities, n_fac, p);
+    locate::p_center::solve(cost_matrix, p, method, &fixed)
 }
 
 /// Solve P-Dispersion facility location problem

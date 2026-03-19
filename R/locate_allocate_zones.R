@@ -310,7 +310,7 @@ allocate_zones <- function(zones,
       objective_local <- sum(weights_part * distances_local)
 
     } else if (method == "p_median") {
-      result <- rust_p_median(cm, weights_part, as.integer(k_star), max_distance)
+      result <- rust_p_median(cm, weights_part, as.integer(k_star), NULL, max_distance)
       if (length(result$selected) == 0 || is.nan(result$objective)) {
         stop(sprintf("P-median infeasible at K=%d%s",
                      k_star,

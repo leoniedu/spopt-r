@@ -11,6 +11,7 @@ p_median(
   weight_col,
   cost_matrix = NULL,
   distance_metric = "euclidean",
+  fixed_col = NULL,
   max_distance = NULL,
   verbose = FALSE
 )
@@ -27,6 +28,11 @@ p_median(
 \item{cost_matrix}{Optional. Pre-computed distance matrix.}
 
 \item{distance_metric}{Distance metric: "euclidean" (default) or "manhattan".}
+
+\item{fixed_col}{Optional column name in \code{facilities} indicating which
+facilities are pre-selected. The column should be logical (\code{TRUE} for
+fixed) or character (\code{"required"}/\code{"candidate"}). Fixed facilities are
+always selected; the solver optimizes the remaining slots.}
 
 \item{max_distance}{Optional numeric. Maximum allowable distance from a demand
 point to its assigned facility. When specified, demand can only be assigned

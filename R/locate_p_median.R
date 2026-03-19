@@ -10,6 +10,10 @@
 #' @param weight_col Character. Column name in `demand` containing demand weights.
 #' @param cost_matrix Optional. Pre-computed distance matrix.
 #' @param distance_metric Distance metric: "euclidean" (default) or "manhattan".
+#' @param fixed_col Optional column name in `facilities` indicating which
+#'   facilities are pre-selected. The column should be logical (`TRUE` for
+#'   fixed) or character (`"required"`/`"candidate"`). Fixed facilities are
+#'   always selected; the solver optimizes the remaining slots.
 #' @param max_distance Optional numeric. Maximum allowable distance from a demand
 #'   point to its assigned facility. When specified, demand can only be assigned
 #'   to facilities within this radius. An error is raised if any demand point has
@@ -98,6 +102,7 @@ p_median <- function(demand,
                      weight_col,
                      cost_matrix = NULL,
                      distance_metric = "euclidean",
+                     fixed_col = NULL,
                      max_distance = NULL,
                      verbose = FALSE) {
   # Input validation
@@ -133,9 +138,11 @@ p_median <- function(demand,
     validate_max_distance(max_distance, cost_matrix)
   }
 
+  fixed_facilities <- resolve_fixed_facilities(fixed_col, facilities, n_facilities)
+
   start_time <- Sys.time()
 
-  result <- rust_p_median(cost_matrix, weights, as.integer(n_facilities), max_distance)
+  result <- rust_p_median(cost_matrix, weights, as.integer(n_facilities), fixed_facilities, max_distance)
 
   end_time <- Sys.time()
 
@@ -147,6 +154,7 @@ p_median <- function(demand,
 
   selected_indices <- result$selected
   facilities_result$.selected <- seq_len(n_fac) %in% selected_indices
+  facilities_result$.fixed <- if (!is.null(fixed_facilities)) seq_len(n_fac) %in% fixed_facilities else rep(FALSE, n_fac)
   facilities_result$.n_assigned <- 0L
 
   for (j in selected_indices) {
@@ -165,6 +173,9 @@ p_median <- function(demand,
     objective = result$objective,
     mean_distance = result$mean_distance,
     max_distance = max_distance,
+    n_fixed = length(fixed_facilities),
+    fixed_col = fixed_col,
+    fixed_facilities = fixed_facilities,
     solve_time = as.numeric(difftime(end_time, start_time, units = "secs"))
   )
 

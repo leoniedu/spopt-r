@@ -11,6 +11,7 @@ p_center(
   cost_matrix = NULL,
   distance_metric = "euclidean",
   method = c("binary_search", "mip"),
+  fixed_col = NULL,
   verbose = FALSE
 )
 }
@@ -27,6 +28,11 @@ p_center(
 
 \item{method}{Algorithm to use: "binary_search" (default, faster) or "mip"
 (direct mixed-integer programming formulation).}
+
+\item{fixed_col}{Optional column name in \code{facilities} indicating which
+facilities are pre-selected. The column should be logical (\code{TRUE} for
+fixed) or character (\code{"required"}/\code{"candidate"}). Fixed facilities are
+always selected; the solver optimizes the remaining slots.}
 
 \item{verbose}{Logical. Print solver progress.}
 }

@@ -14,6 +14,7 @@ mclp(
   weight_col,
   cost_matrix = NULL,
   distance_metric = "euclidean",
+  fixed_col = NULL,
   verbose = FALSE
 )
 ```
@@ -47,6 +48,14 @@ mclp(
 - distance_metric:
 
   Distance metric: "euclidean" (default) or "manhattan".
+
+- fixed_col:
+
+  Optional column name in `facilities` indicating which facilities are
+  pre-selected. The column should be logical (`TRUE` for fixed) or
+  character (`"required"`/`"candidate"`). Fixed facilities are always
+  selected; the solver optimizes the remaining slots. Useful for
+  expansion planning where some facilities already exist.
 
 - verbose:
 
