@@ -187,8 +187,17 @@ attr(result_pmedian, "spopt")
     $mean_distance
     [1] 7805.025
 
+    $n_fixed
+    [1] 0
+
+    $fixed_col
+    NULL
+
+    $fixed_facilities
+    NULL
+
     $solve_time
-    [1] 0.31107
+    [1] 0.31003
 
 The `objective` value represents the total weighted distance - lower is
 better.

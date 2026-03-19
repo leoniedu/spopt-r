@@ -91,7 +91,7 @@ result <- p_median(
 result$facilities |> filter(.selected)
 ```
 
-    Simple feature collection with 5 features and 7 fields
+    Simple feature collection with 5 features and 8 fields
     Geometry type: POINT
     Dimension:     XY
     Bounding box:  xmin: -97.40206 ymin: 32.66538 xmax: -97.12351 ymax: 32.89751
@@ -102,12 +102,12 @@ result$facilities |> filter(.selected)
     3 48439110402 Census Tract 1104.02; Tarrant County; Texas B01003_001     5387
     4 48439105800    Census Tract 1058; Tarrant County; Texas B01003_001     4430
     5 48439113946 Census Tract 1139.46; Tarrant County; Texas B01003_001     6509
-       moe                   geometry .selected .n_assigned
-    1 1007 POINT (-97.12453 32.66618)      TRUE         112
-    2  703 POINT (-97.12351 32.84844)      TRUE          90
-    3   16 POINT (-97.40206 32.80275)      TRUE          69
-    4  698 POINT (-97.34284 32.66538)      TRUE         107
-    5 3880 POINT (-97.28117 32.89751)      TRUE          71
+       moe                   geometry .selected .fixed .n_assigned
+    1 1007 POINT (-97.12453 32.66618)      TRUE  FALSE         112
+    2  703 POINT (-97.12351 32.84844)      TRUE  FALSE          90
+    3   16 POINT (-97.40206 32.80275)      TRUE  FALSE          69
+    4  698 POINT (-97.34284 32.66538)      TRUE  FALSE         107
+    5 3880 POINT (-97.28117 32.89751)      TRUE  FALSE          71
 
 The
 [`p_median()`](https://walker-data.com/spopt-r/reference/p_median.md)

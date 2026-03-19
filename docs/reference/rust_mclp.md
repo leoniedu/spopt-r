@@ -5,7 +5,7 @@ Solve MCLP (Maximum Coverage Location Problem)
 ## Usage
 
 ``` r
-rust_mclp(cost_matrix, weights, service_radius, n_facilities)
+rust_mclp(cost_matrix, weights, service_radius, n_facilities, fixed_facilities)
 ```
 
 ## Arguments
@@ -25,6 +25,10 @@ rust_mclp(cost_matrix, weights, service_radius, n_facilities)
 - n_facilities:
 
   Number of facilities to locate
+
+- fixed_facilities:
+
+  Optional indices of pre-selected facilities (1-based, NULL for none)
 
 ## Value
 
