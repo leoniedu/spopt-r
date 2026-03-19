@@ -6,10 +6,13 @@ use extendr_api::prelude::*;
 use highs::{HighsModelStatus, Sense, RowProblem, Col};
 
 /// Solve P-Median facility location problem
-pub fn solve(cost_matrix: RMatrix<f64>, weights: &[f64], n_facilities: usize) -> List {
+pub fn solve(cost_matrix: RMatrix<f64>, weights: &[f64], n_facilities: usize, fixed: &[usize]) -> List {
     let n_demand = cost_matrix.nrows();
     let n_fac = cost_matrix.ncols();
     let p = n_facilities;
+
+    // Build fixed-facility mask
+    let is_fixed: Vec<bool> = (0..n_fac).map(|j| fixed.contains(&j)).collect();
 
     // Create row-based problem
     let mut pb = RowProblem::new();
@@ -18,9 +21,12 @@ pub fn solve(cost_matrix: RMatrix<f64>, weights: &[f64], n_facilities: usize) ->
     // y[j] = 1 if facility j is selected (j = 0..n_fac-1)
     // x[i][j] = 1 if demand i is served by facility j
 
-    // Add y variables (binary facility selection)
+    // Add y variables (binary facility selection, forced for fixed)
     let y_cols: Vec<Col> = (0..n_fac)
-        .map(|_| pb.add_integer_column(0.0, 0.0..=1.0))  // obj coeff = 0 for y
+        .map(|j| {
+            let bounds = if is_fixed[j] { 1.0..=1.0 } else { 0.0..=1.0 };
+            pb.add_integer_column(0.0, bounds)
+        })
         .collect();
 
     // Add x variables (continuous assignment) with objective coefficients

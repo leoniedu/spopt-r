@@ -12,6 +12,10 @@
 #' @param distance_metric Distance metric: "euclidean" (default) or "manhattan".
 #' @param method Algorithm to use: "binary_search" (default, faster) or "mip"
 #'   (direct mixed-integer programming formulation).
+#' @param fixed_col Optional column name in `facilities` indicating which
+#'   facilities are pre-selected. The column should be logical (`TRUE` for
+#'   fixed) or character (`"required"`/`"candidate"`). Fixed facilities are
+#'   always selected; the solver optimizes the remaining slots.
 #' @param verbose Logical. Print solver progress.
 #'
 #' @return A list with two sf objects:
@@ -93,6 +97,7 @@ p_center <- function(demand,
                      cost_matrix = NULL,
                      distance_metric = "euclidean",
                      method = c("binary_search", "mip"),
+                     fixed_col = NULL,
                      verbose = FALSE) {
   method <- match.arg(method)
   if (!inherits(demand, "sf")) {
@@ -129,10 +134,12 @@ p_center <- function(demand,
   n_demand <- nrow(demand)
   n_fac <- nrow(facilities)
 
+  fixed_facilities <- resolve_fixed_facilities(fixed_col, facilities, n_facilities)
+
   start_time <- Sys.time()
 
   # Call Rust solver with specified method
-  result <- rust_p_center(cost_matrix, as.integer(n_facilities), method)
+  result <- rust_p_center(cost_matrix, as.integer(n_facilities), method, fixed_facilities)
 
   end_time <- Sys.time()
 
@@ -142,6 +149,7 @@ p_center <- function(demand,
   demand_result$.facility <- result$assignments  # 1-based facility index
   selected_indices <- result$selected
   facilities_result$.selected <- seq_len(n_fac) %in% selected_indices
+  facilities_result$.fixed <- if (!is.null(fixed_facilities)) seq_len(n_fac) %in% fixed_facilities else rep(FALSE, n_fac)
   facilities_result$.n_assigned <- 0L
 
   for (j in selected_indices) {
@@ -160,6 +168,9 @@ p_center <- function(demand,
     n_facilities = n_facilities,
     objective = result$max_distance,
     max_distance = result$max_distance,
+    n_fixed = length(fixed_facilities),
+    fixed_col = fixed_col,
+    fixed_facilities = fixed_facilities,
     solve_time = as.numeric(difftime(end_time, start_time, units = "secs"))
   )
 

@@ -107,18 +107,25 @@ pub fn solve_mclp(
     weights: &[f64],
     service_radius: f64,
     n_facilities_to_locate: usize,
+    fixed: &[usize],
 ) -> List {
     let n_demand = cost_matrix.nrows();
     let n_facilities = cost_matrix.ncols();
     let p = n_facilities_to_locate;
 
+    // Build fixed-facility mask
+    let is_fixed: Vec<bool> = (0..n_facilities).map(|j| fixed.contains(&j)).collect();
+
     // Create row-based problem
     let mut pb = RowProblem::new();
 
     // Variables:
-    // y[j] = 1 if facility j is selected (binary)
+    // y[j] = 1 if facility j is selected (binary, forced for fixed)
     let y_cols: Vec<Col> = (0..n_facilities)
-        .map(|_| pb.add_integer_column(0.0, 0.0..=1.0))  // no obj coeff for y
+        .map(|j| {
+            let bounds = if is_fixed[j] { 1.0..=1.0 } else { 0.0..=1.0 };
+            pb.add_integer_column(0.0, bounds)
+        })
         .collect();
 
     // z[i] = 1 if demand i is covered (binary)

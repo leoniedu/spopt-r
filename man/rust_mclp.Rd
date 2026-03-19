@@ -4,7 +4,7 @@
 \alias{rust_mclp}
 \title{Solve MCLP (Maximum Coverage Location Problem)}
 \usage{
-rust_mclp(cost_matrix, weights, service_radius, n_facilities)
+rust_mclp(cost_matrix, weights, service_radius, n_facilities, fixed_facilities)
 }
 \arguments{
 \item{cost_matrix}{Cost/distance matrix (demand x facilities)}

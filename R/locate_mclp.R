@@ -10,6 +10,11 @@
 #' @param weight_col Character. Column name in `demand` containing demand weights.
 #' @param cost_matrix Optional. Pre-computed distance matrix.
 #' @param distance_metric Distance metric: "euclidean" (default) or "manhattan".
+#' @param fixed_col Optional column name in `facilities` indicating which
+#'   facilities are pre-selected. The column should be logical (`TRUE` for
+#'   fixed) or character (`"required"`/`"candidate"`). Fixed facilities are
+#'   always selected; the solver optimizes the remaining slots. Useful for
+#'   expansion planning where some facilities already exist.
 #' @param verbose Logical. Print solver progress.
 #'
 #' @return A list with two sf objects:
@@ -85,6 +90,7 @@ mclp <- function(demand,
                  weight_col,
                  cost_matrix = NULL,
                  distance_metric = "euclidean",
+                 fixed_col = NULL,
                  verbose = FALSE) {
   # Input validation
   if (!inherits(demand, "sf")) {
@@ -134,10 +140,13 @@ mclp <- function(demand,
     stop("`n_facilities` cannot exceed number of candidate facilities", call. = FALSE)
   }
 
+  fixed_facilities <- resolve_fixed_facilities(fixed_col, facilities, n_facilities)
+
   start_time <- Sys.time()
 
   # Call Rust solver
-  result <- rust_mclp(cost_matrix, weights, service_radius, as.integer(n_facilities))
+  result <- rust_mclp(cost_matrix, weights, service_radius, as.integer(n_facilities),
+                       fixed_facilities)
 
   end_time <- Sys.time()
 
@@ -169,6 +178,7 @@ mclp <- function(demand,
   }
 
   facilities_result$.selected <- seq_len(n_fac) %in% selected_indices
+  facilities_result$.fixed <- if (!is.null(fixed_facilities)) seq_len(n_fac) %in% fixed_facilities else rep(FALSE, n_fac)
   facilities_result$.n_assigned <- 0L
 
   for (j in selected_indices) {
@@ -189,6 +199,9 @@ mclp <- function(demand,
     covered_weight = result$covered_weight,
     total_weight = result$total_weight,
     coverage_pct = result$coverage_pct,
+    n_fixed = length(fixed_facilities),
+    fixed_col = fixed_col,
+    fixed_facilities = fixed_facilities,
     solve_time = as.numeric(difftime(end_time, start_time, units = "secs"))
   )
 

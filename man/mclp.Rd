@@ -12,6 +12,7 @@ mclp(
   weight_col,
   cost_matrix = NULL,
   distance_metric = "euclidean",
+  fixed_col = NULL,
   verbose = FALSE
 )
 }
@@ -29,6 +30,12 @@ mclp(
 \item{cost_matrix}{Optional. Pre-computed distance matrix.}
 
 \item{distance_metric}{Distance metric: "euclidean" (default) or "manhattan".}
+
+\item{fixed_col}{Optional column name in \code{facilities} indicating which
+facilities are pre-selected. The column should be logical (\code{TRUE} for
+fixed) or character (\code{"required"}/\code{"candidate"}). Fixed facilities are
+always selected; the solver optimizes the remaining slots. Useful for
+expansion planning where some facilities already exist.}
 
 \item{verbose}{Logical. Print solver progress.}
 }

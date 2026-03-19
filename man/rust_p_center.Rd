@@ -4,7 +4,7 @@
 \alias{rust_p_center}
 \title{Solve P-Center facility location problem}
 \usage{
-rust_p_center(cost_matrix, n_facilities, method)
+rust_p_center(cost_matrix, n_facilities, method, fixed_facilities)
 }
 \arguments{
 \item{cost_matrix}{Cost/distance matrix (demand x facilities)}

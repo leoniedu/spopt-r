@@ -35,6 +35,9 @@ rust/vendor
 Makevars
 Makevars.win
 
+# Demos (local testing, not part of package)
+demos/
+
 # rJavaEnv
 rjavaenv/
 

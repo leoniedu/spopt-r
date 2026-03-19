@@ -10,6 +10,10 @@
 #' @param weight_col Character. Column name in `demand` containing demand weights.
 #' @param cost_matrix Optional. Pre-computed distance matrix.
 #' @param distance_metric Distance metric: "euclidean" (default) or "manhattan".
+#' @param fixed_col Optional column name in `facilities` indicating which
+#'   facilities are pre-selected. The column should be logical (`TRUE` for
+#'   fixed) or character (`"required"`/`"candidate"`). Fixed facilities are
+#'   always selected; the solver optimizes the remaining slots.
 #' @param verbose Logical. Print solver progress.
 #'
 #' @return A list with two sf objects:
@@ -83,6 +87,7 @@ p_median <- function(demand,
                      weight_col,
                      cost_matrix = NULL,
                      distance_metric = "euclidean",
+                     fixed_col = NULL,
                      verbose = FALSE) {
   # Input validation
   if (!inherits(demand, "sf")) {
@@ -128,9 +133,11 @@ p_median <- function(demand,
     stop("`n_facilities` cannot exceed number of candidate facilities", call. = FALSE)
   }
 
+  fixed_facilities <- resolve_fixed_facilities(fixed_col, facilities, n_facilities)
+
   start_time <- Sys.time()
 
-  result <- rust_p_median(cost_matrix, weights, as.integer(n_facilities))
+  result <- rust_p_median(cost_matrix, weights, as.integer(n_facilities), fixed_facilities)
 
   end_time <- Sys.time()
 
@@ -142,6 +149,7 @@ p_median <- function(demand,
 
   selected_indices <- result$selected
   facilities_result$.selected <- seq_len(n_fac) %in% selected_indices
+  facilities_result$.fixed <- if (!is.null(fixed_facilities)) seq_len(n_fac) %in% fixed_facilities else rep(FALSE, n_fac)
   facilities_result$.n_assigned <- 0L
 
   for (j in selected_indices) {
@@ -159,6 +167,9 @@ p_median <- function(demand,
     n_facilities = n_facilities,
     objective = result$objective,
     mean_distance = result$mean_distance,
+    n_fixed = length(fixed_facilities),
+    fixed_col = fixed_col,
+    fixed_facilities = fixed_facilities,
     solve_time = as.numeric(difftime(end_time, start_time, units = "secs"))
   )
 

@@ -11,11 +11,11 @@ use highs::{HighsModelStatus, Sense, RowProblem, Col};
 use std::collections::BTreeSet;
 
 /// Solve P-Center using the specified method
-pub fn solve(cost_matrix: RMatrix<f64>, n_facilities: usize, method: &str) -> List {
+pub fn solve(cost_matrix: RMatrix<f64>, n_facilities: usize, method: &str, fixed: &[usize]) -> List {
     match method {
-        "binary_search" => solve_binary_search(cost_matrix, n_facilities),
-        "mip" => solve_mip(cost_matrix, n_facilities),
-        _ => solve_binary_search(cost_matrix, n_facilities), // default
+        "binary_search" => solve_binary_search(cost_matrix, n_facilities, fixed),
+        "mip" => solve_mip(cost_matrix, n_facilities, fixed),
+        _ => solve_binary_search(cost_matrix, n_facilities, fixed), // default
     }
 }
 
@@ -23,7 +23,7 @@ pub fn solve(cost_matrix: RMatrix<f64>, n_facilities: usize, method: &str) -> Li
 ///
 /// This approach is typically much faster than the direct MIP formulation because
 /// it converts the difficult minimax objective into simpler feasibility problems.
-fn solve_binary_search(cost_matrix: RMatrix<f64>, n_facilities: usize) -> List {
+fn solve_binary_search(cost_matrix: RMatrix<f64>, n_facilities: usize, fixed: &[usize]) -> List {
     let n_demand = cost_matrix.nrows();
     let n_fac = cost_matrix.ncols();
     let p = n_facilities;
@@ -60,7 +60,7 @@ fn solve_binary_search(cost_matrix: RMatrix<f64>, n_facilities: usize) -> List {
         let mid = lo + (hi - lo) / 2;
         let threshold = distances[mid];
 
-        if let Some(selected) = can_cover_with_p_facilities(&cost_matrix, threshold, p) {
+        if let Some(selected) = can_cover_with_p_facilities(&cost_matrix, threshold, p, fixed) {
             // Feasible - try smaller distance
             best_result = Some((selected, threshold));
             if mid == 0 {
@@ -121,9 +121,12 @@ fn can_cover_with_p_facilities(
     cost_matrix: &RMatrix<f64>,
     threshold: f64,
     p: usize,
+    fixed: &[usize],
 ) -> Option<Vec<usize>> {
     let n_demand = cost_matrix.nrows();
     let n_fac = cost_matrix.ncols();
+
+    let is_fixed: Vec<bool> = (0..n_fac).map(|j| fixed.contains(&j)).collect();
 
     // Build coverage matrix: which facilities can cover each demand point?
     // coverage[i] = list of facilities that can cover demand i
@@ -147,9 +150,12 @@ fn can_cover_with_p_facilities(
     // Use ILP for exact solution
     let mut pb = RowProblem::new();
 
-    // y[j] = 1 if facility j selected (objective = 0, just feasibility)
+    // y[j] = 1 if facility j selected (forced for fixed)
     let y_cols: Vec<Col> = (0..n_fac)
-        .map(|_| pb.add_integer_column(0.0, 0.0..=1.0))
+        .map(|j| {
+            let bounds = if is_fixed[j] { 1.0..=1.0 } else { 0.0..=1.0 };
+            pb.add_integer_column(0.0, bounds)
+        })
         .collect();
 
     // Constraint: exactly p facilities
@@ -213,10 +219,12 @@ impl Ord for OrderedFloat {
 }
 
 /// Solve P-Center using direct MIP formulation (original method)
-fn solve_mip(cost_matrix: RMatrix<f64>, n_facilities: usize) -> List {
+fn solve_mip(cost_matrix: RMatrix<f64>, n_facilities: usize, fixed: &[usize]) -> List {
     let n_demand = cost_matrix.nrows();
     let n_fac = cost_matrix.ncols();
     let p = n_facilities;
+
+    let is_fixed: Vec<bool> = (0..n_fac).map(|j| fixed.contains(&j)).collect();
 
     // Compute max distance for upper bound
     let mut max_dist: f64 = 0.0;
@@ -236,9 +244,12 @@ fn solve_mip(cost_matrix: RMatrix<f64>, n_facilities: usize) -> List {
     // W = maximum distance (continuous), objective coefficient = 1
     let w_col = pb.add_column(1.0, 0.0..=(max_dist * 2.0));
 
-    // y[j] = 1 if facility j selected (binary)
+    // y[j] = 1 if facility j selected (forced for fixed)
     let y_cols: Vec<Col> = (0..n_fac)
-        .map(|_| pb.add_integer_column(0.0, 0.0..=1.0))
+        .map(|j| {
+            let bounds = if is_fixed[j] { 1.0..=1.0 } else { 0.0..=1.0 };
+            pb.add_integer_column(0.0, bounds)
+        })
         .collect();
 
     // x[i][j] = 1 if demand i assigned to facility j (continuous for LP relaxation)

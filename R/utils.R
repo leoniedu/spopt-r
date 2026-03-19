@@ -52,6 +52,65 @@ validate_regionalization_data <- function(data, check_cols, call_name = "regiona
   list(data = data, removed_idx = removed_idx)
 }
 
+# Resolve fixed_col to integer row indices for facility location solvers.
+# fixed_col: column name in facilities containing TRUE/FALSE (or "required"/"candidate").
+# Returns NULL if fixed_col is NULL, or an integer vector of 1-based row indices.
+resolve_fixed_facilities <- function(fixed_col, facilities, n_facilities) {
+  if (is.null(fixed_col)) return(NULL)
+
+  if (!is.character(fixed_col) || length(fixed_col) != 1L) {
+    stop("`fixed_col` must be a single column name", call. = FALSE)
+  }
+  if (!fixed_col %in% names(facilities)) {
+    stop(sprintf("Column '%s' not found in `facilities`", fixed_col), call. = FALSE)
+  }
+
+  vals <- facilities[[fixed_col]]
+
+  # Support logical columns directly
+  if (is.logical(vals)) {
+    if (anyNA(vals)) {
+      stop(sprintf("`fixed_col` column '%s' must not contain NA values", fixed_col),
+           call. = FALSE)
+    }
+    fixed_indices <- which(vals)
+  } else if (is.character(vals) || is.factor(vals)) {
+    # Support "required"/"candidate" pattern
+    vals <- tolower(as.character(vals))
+    allowed <- c("required", "candidate")
+    bad <- setdiff(unique(vals[!is.na(vals)]), allowed)
+    if (length(bad) > 0) {
+      stop(sprintf(
+        "`fixed_col` column '%s' must contain TRUE/FALSE or 'required'/'candidate', found: %s",
+        fixed_col, paste(bad, collapse = ", ")
+      ), call. = FALSE)
+    }
+    if (anyNA(vals)) {
+      stop(sprintf("`fixed_col` column '%s' must not contain NA values", fixed_col),
+           call. = FALSE)
+    }
+    fixed_indices <- which(vals == "required")
+  } else {
+    stop(sprintf(
+      "`fixed_col` column '%s' must be logical or character ('required'/'candidate')",
+      fixed_col
+    ), call. = FALSE)
+  }
+
+  if (length(fixed_indices) == 0L) {
+    return(NULL)  # no fixed facilities, same as not specifying
+  }
+
+  if (length(fixed_indices) > n_facilities) {
+    stop(sprintf(
+      "more fixed facilities (%d) than requested n_facilities (%d)",
+      length(fixed_indices), n_facilities
+    ), call. = FALSE)
+  }
+
+  as.integer(fixed_indices)
+}
+
 # Attach spopt metadata to result
 attach_spopt_metadata <- function(result, metadata) {
   attr(result, "spopt") <- metadata
