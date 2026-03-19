@@ -1,6 +1,10 @@
 # macOS
 .DS_Store
 
+# Rendered vignettes
+vignettes/*.html
+vignettes/*_files/
+
 # R package files
 .Rproj.user
 .Rhistory
