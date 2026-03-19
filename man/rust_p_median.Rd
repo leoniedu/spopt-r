@@ -12,6 +12,8 @@ rust_p_median(cost_matrix, weights, n_facilities, fixed_facilities)
 \item{weights}{Demand weights}
 
 \item{n_facilities}{Number of facilities to locate (p)}
+
+\item{fixed_facilities}{Optional indices of pre-selected facilities (1-based, NULL for none)}
 }
 \value{
 List with selected facilities and assignments
