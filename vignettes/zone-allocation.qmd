@@ -176,11 +176,11 @@ cat("Centers (unpartitioned):", m2$n_selected, "\n")
 
 ## Method summary
 
-|                 | `"nearest"`       | `"p_median"`        | `"cflp"`           |
+|                 | `"nearest"`       | `"p_median"`        | `"cflp"`          |
 |------------------|------------------|------------------|------------------|
-| **K discovery** | LSCP              | LSCP                | LSCP + increment   |
-| **Assignment**  | Nearest (greedy)  | P-median (optimal)  | CFLP (optimal)     |
-| **Weights**     | Not used          | Optional            | Optional           |
-| **Capacity**    | No                | No                  | Yes (`capacity`)   |
-| **Sequencing**  | `sequence = TRUE` | `sequence = TRUE`   | `sequence = TRUE`  |
-| **Best for**    | Speed             | Non-uniform weights | Capped workloads   |
+| **K discovery** | LSCP              | LSCP                | LSCP + increment  |
+| **Assignment**  | Nearest (greedy)  | P-median (optimal)  | CFLP (optimal)    |
+| **Weights**     | Not used          | Optional            | Optional          |
+| **Capacity**    | No                | No                  | Yes (`capacity`)  |
+| **Sequencing**  | `sequence = TRUE` | `sequence = TRUE`   | `sequence = TRUE` |
+| **Best for**    | Speed             | Non-uniform weights | Capped workloads  |

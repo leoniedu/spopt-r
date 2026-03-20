@@ -5,27 +5,35 @@
 .spopt_env$cache_type            <- NULL  # "memory" or "filesystem"
 .spopt_env$versioned_cache_path  <- NULL  # effective path: <R_user_dir>/<version>
 
+# Solver names — single source of truth for the cacheable Rust wrappers.
+.solver_names <- c(
+  "rust_lscp",
+  "rust_p_median",
+  "rust_cflp",
+  "rust_mclp",
+  "rust_p_center",
+  "rust_p_dispersion",
+  "rust_frlm_greedy"
+)
+
 # Solver dispatch table ------------------------------------------------------
 # On load, holds bare Rust functions. When cache is enabled, holds memoised
 # wrappers. All locate_*.R call sites route through this environment.
 
 spopt_solvers <- new.env(parent = emptyenv())
 
+# Restore bare (unmemoised) Rust functions into the dispatch table.
+.restore_bare_solvers <- function() {
+  ns <- asNamespace("spopt")
+  for (nm in .solver_names) {
+    spopt_solvers[[nm]] <- get(nm, envir = ns, inherits = FALSE)
+  }
+}
+
 # .onLoad: populate dispatch table after the DLL is loaded ------------------
 
 .onLoad <- function(libname, pkgname) {
-  solver_names <- c(
-    "rust_lscp",
-    "rust_p_median",
-    "rust_cflp",
-    "rust_mclp",
-    "rust_p_center",
-    "rust_p_dispersion",
-    "rust_frlm_greedy"
-  )
-  for (nm in solver_names) {
-    spopt_solvers[[nm]] <- get(nm, envir = asNamespace("spopt"), inherits = FALSE)
-  }
+  .restore_bare_solvers()
 }
 
 # Public API -----------------------------------------------------------------
@@ -71,26 +79,17 @@ spopt_enable_cache <- function(persistent = FALSE) {
     base_path      <- tools::R_user_dir("spopt", "cache")
     pkg_ver        <- as.character(utils::packageVersion("spopt"))
     versioned_path <- file.path(base_path, pkg_ver)
-    if (!dir.exists(versioned_path)) dir.create(versioned_path, recursive = TRUE)
+    dir.create(versioned_path, recursive = TRUE, showWarnings = FALSE)
     cache_obj <- memoise::cache_filesystem(versioned_path)
     .spopt_env$cache_type           <- "filesystem"
     .spopt_env$versioned_cache_path <- versioned_path
   }
 
-  solver_names <- c(
-    "rust_lscp",
-    "rust_p_median",
-    "rust_cflp",
-    "rust_mclp",
-    "rust_p_center",
-    "rust_p_dispersion",
-    "rust_frlm_greedy"
-  )
-
   # Always fetch bare functions from the package namespace to prevent
   # double-wrapping if spopt_enable_cache() is called more than once.
-  for (nm in solver_names) {
-    bare_fn <- get(nm, envir = asNamespace("spopt"), inherits = FALSE)
+  ns <- asNamespace("spopt")
+  for (nm in .solver_names) {
+    bare_fn <- get(nm, envir = ns, inherits = FALSE)
     spopt_solvers[[nm]] <- memoise::memoise(bare_fn, cache = cache_obj)
   }
 
@@ -107,18 +106,7 @@ spopt_enable_cache <- function(persistent = FALSE) {
 #' @seealso [spopt_enable_cache()], [spopt_clear_cache()], [spopt_cache_info()]
 #' @export
 spopt_disable_cache <- function() {
-  solver_names <- c(
-    "rust_lscp",
-    "rust_p_median",
-    "rust_cflp",
-    "rust_mclp",
-    "rust_p_center",
-    "rust_p_dispersion",
-    "rust_frlm_greedy"
-  )
-  for (nm in solver_names) {
-    spopt_solvers[[nm]] <- get(nm, envir = asNamespace("spopt"), inherits = FALSE)
-  }
+  .restore_bare_solvers()
   .spopt_env$cache_enabled         <- FALSE
   .spopt_env$cache_type            <- NULL
   .spopt_env$versioned_cache_path  <- NULL
@@ -144,10 +132,11 @@ spopt_clear_cache <- function() {
     message("Cache is not currently enabled. Use spopt_enable_cache() first.")
     return(invisible(NULL))
   }
+  is_persistent <- identical(.spopt_env$cache_type, "filesystem")
   # For filesystem: remove version-named subdirectories only. The base cache
-  # directory (tools::R_user_dir output) is never touched.
-  if (identical(.spopt_env$cache_type, "filesystem")) {
-    base_path <- tools::R_user_dir("spopt", "cache")
+  # directory is never deleted.
+  if (is_persistent && !is.null(.spopt_env$versioned_cache_path)) {
+    base_path <- dirname(.spopt_env$versioned_cache_path)
     if (dir.exists(base_path)) {
       subdirs <- list.dirs(base_path, recursive = FALSE, full.names = TRUE)
       version_subdirs <- subdirs[grepl("^\\d+\\.\\d+(\\.\\d+)*$", basename(subdirs))]
@@ -155,7 +144,7 @@ spopt_clear_cache <- function() {
     }
   }
   # Re-enable with same settings to recreate the cache object (and directory).
-  spopt_enable_cache(persistent = identical(.spopt_env$cache_type, "filesystem"))
+  spopt_enable_cache(persistent = is_persistent)
   invisible(NULL)
 }
 
