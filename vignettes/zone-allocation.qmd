@@ -12,7 +12,7 @@ library(spopt)
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 options(tigris_use_cache = TRUE)
 n_sample <- params$n_sample
-spopt_enable_cache()
+spopt_enable_cache(persistent = TRUE)
 ```
 
 `allocate_zones()` partitions geographic units into zones, each with a center, such that no unit exceeds `max_distance` from its center. It automatically discovers the minimum number of centers via LSCP, then assigns units using one of three methods:
