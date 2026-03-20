@@ -4,11 +4,12 @@ format: html
 editor: visual
 bibliography: references.bib
 params:
-  n_sample: 100
+  n_sample: 50
 ---
 
 ```{r setup, include = FALSE}
 library(spopt)
+library(tinytable)
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 options(tigris_use_cache = TRUE)
 n_sample <- params$n_sample
@@ -52,7 +53,7 @@ zones_sf <- zones_sf |> slice_sample(n = min(n_sample, nrow(zones_sf)))
 tarrant <- tarrant |> filter(GEOID %in% zones_sf$GEOID)
 
 dm <- units::drop_units(st_distance(zones_sf)) / 1000
-cat(nrow(zones_sf), "tracts\n")
+nrow(zones_sf)
 ```
 
 ## Three methods compared
@@ -66,29 +67,37 @@ result_opt <- allocate_zones(zones_sf, max_distance = 5, method = "p_median",
                              cost_matrix = dm, verbose = TRUE)
 
 result_cap <- allocate_zones(zones_sf, max_distance = 5, method = "cflp",
-                             capacity = 5,
+                             capacity = 3,
                              cost_matrix = dm, verbose = TRUE)
 ```
 
 ```{r compare}
-pop <- zones_sf$population
 m1 <- attr(result_near, "spopt")
 m2 <- attr(result_opt, "spopt")
 m3 <- attr(result_cap, "spopt")
 
-cat(sprintf("%-25s %10s %10s %10s\n", "", "nearest", "p_median", "cflp(5)"))
-cat(sprintf("%-25s %10d %10d %10d\n", "Centers",
-    m1$n_selected, m2$n_selected, m3$n_selected))
-cat(sprintf("%-25s %10.0f %10.0f %10.0f\n", "Pop-weighted distance",
-    sum(pop * result_near$zones$.distance),
-    sum(pop * result_opt$zones$.distance),
-    sum(pop * result_cap$zones$.distance)))
-cat(sprintf("%-25s %10d %10d %10d\n", "Max tracts/center",
+data.frame(
+  Metric = c("Centers", "Total distance (km)", "Max tracts/center", "Solve time (s)"),
+  nearest = c(
+    m1$n_selected,
+    round(sum(result_near$zones$.distance), 1),
     max(table(result_near$zones$.center)),
+    round(m1$solve_time, 3)
+  ),
+  p_median = c(
+    m2$n_selected,
+    round(sum(result_opt$zones$.distance), 1),
     max(table(result_opt$zones$.center)),
-    max(table(result_cap$zones$.center))))
-cat(sprintf("%-25s %10.3f %10.3f %10.3f\n", "Solve time (s)",
-    m1$solve_time, m2$solve_time, m3$solve_time))
+    round(m2$solve_time, 3)
+  ),
+  `cflp(5)` = c(
+    m3$n_selected,
+    round(sum(result_cap$zones$.distance), 1),
+    max(table(result_cap$zones$.center)),
+    round(m3$solve_time, 3)
+  ),
+  check.names = FALSE
+) |> tt()
 ```
 
 ## Mapping
@@ -128,10 +137,11 @@ result_seq <- allocate_zones(zones_sf, max_distance = 5, method = "p_median",
                              cost_matrix = dm, sequence = TRUE, verbose = TRUE)
 
 # Show first 15 tracts in visit order
-seq_df <- st_drop_geometry(result_seq$zones) |>
+st_drop_geometry(result_seq$zones) |>
   select(GEOID, .center, .zone_order, .tract_order) |>
-  arrange(.zone_order, .tract_order)
-head(seq_df, 15)
+  arrange(.zone_order, .tract_order) |>
+  head(15) |>
+  tt()
 ```
 
 ```{r seqmap, fig.width=8, fig.height=6, out.width="100%"}
@@ -168,17 +178,20 @@ result_part <- allocate_zones(zones_sf, max_distance = 5, method = "p_median",
                               partition_col = "region",
                               cost_matrix = dm, verbose = TRUE)
 
-cat("Centers (partitioned):", attr(result_part, "spopt")$n_selected, "\n")
-cat("Centers (unpartitioned):", m2$n_selected, "\n")
+data.frame(
+  Approach = c("Partitioned", "Unpartitioned"),
+  Centers = c(attr(result_part, "spopt")$n_selected, m2$n_selected)
+) |> tt()
 ```
 
 ## Method summary
 
-|                 | `"nearest"`       | `"p_median"`        | `"cflp"`          |
-|------------------|------------------|------------------|------------------|
-| **K discovery** | LSCP              | LSCP                | LSCP + increment  |
-| **Assignment**  | Nearest (greedy)  | P-median (optimal)  | CFLP (optimal)    |
-| **Weights**     | Not used          | Optional            | Optional          |
-| **Capacity**    | No                | No                  | Yes (`capacity`)  |
-| **Sequencing**  | `sequence = TRUE` | `sequence = TRUE`   | `sequence = TRUE` |
-| **Best for**    | Speed             | Non-uniform weights | Capped workloads  |
+```{r method-summary, echo = FALSE}
+data.frame(
+  ` ` = c("K discovery", "Assignment", "Weights", "Capacity", "Sequencing", "Best for"),
+  nearest = c("LSCP", "Nearest (greedy)", "Not used", "No", "sequence = TRUE", "Speed"),
+  p_median = c("LSCP", "P-median (optimal)", "Optional", "No", "sequence = TRUE", "Non-uniform weights"),
+  cflp = c("LSCP + increment", "CFLP (optimal)", "Optional", "Yes (capacity)", "sequence = TRUE", "Capped workloads"),
+  check.names = FALSE
+) |> tt()
+```
