@@ -194,7 +194,7 @@ frlm <- function(flows,
   start_time <- Sys.time()
 
   # Call Rust implementation
-  result_list <- rust_frlm_greedy(
+  result_list <- spopt_solvers$rust_frlm_greedy(
     n_candidates = as.integer(n_candidates),
     path_candidates = as.integer(path_candidates),
     path_offsets = as.integer(path_offsets),

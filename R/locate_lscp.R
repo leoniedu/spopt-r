@@ -119,7 +119,7 @@ lscp <- function(demand,
   start_time <- Sys.time()
 
   # Call Rust solver
-  result <- rust_lscp(cost_matrix, service_radius)
+  result <- spopt_solvers$rust_lscp(cost_matrix, service_radius)
 
   end_time <- Sys.time()
 
