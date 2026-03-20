@@ -286,7 +286,7 @@ allocate_zones <- function(zones,
     component_counter <- component_counter + 1L
 
     # Stage 1: LSCP — find minimum K
-    lscp_result <- rust_lscp(cm, max_distance)
+    lscp_result <- spopt_solvers$rust_lscp(cm, max_distance)
     k_star <- lscp_result$n_selected
 
     if (verbose) message(sprintf("  LSCP: K*=%d", k_star))
@@ -310,7 +310,7 @@ allocate_zones <- function(zones,
       objective_local <- sum(weights_part * distances_local)
 
     } else if (method == "p_median") {
-      result <- rust_p_median(cm, weights_part, as.integer(k_star), NULL, max_distance)
+      result <- spopt_solvers$rust_p_median(cm, weights_part, as.integer(k_star), NULL, max_distance)
       if (length(result$selected) == 0 || is.nan(result$objective)) {
         stop(sprintf("P-median infeasible at K=%d%s",
                      k_star,
@@ -333,8 +333,8 @@ allocate_zones <- function(zones,
 
       k_lb <- max(k_star, ceiling(sum(weights_part) / capacity))
       for (k in k_lb:n_part) {
-        cflp_result <- rust_cflp(cm, weights_part, capacities_part,
-                                 as.integer(k), NULL, max_distance)
+        cflp_result <- spopt_solvers$rust_cflp(cm, weights_part, capacities_part,
+                                               as.integer(k), NULL, max_distance)
         if (is.null(cflp_result$error)) {
           result <- cflp_result
           if (verbose) message(sprintf("  CFLP: K=%d feasible (objective=%.2f)",

@@ -182,7 +182,7 @@ cflp <- function(demand,
   start_time <- Sys.time()
 
   # Call Rust solver
-  result <- rust_cflp(
+  result <- spopt_solvers$rust_cflp(
     cost_matrix,
     weights,
     capacities,
