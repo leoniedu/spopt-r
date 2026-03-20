@@ -4,7 +4,13 @@
 \alias{rust_p_median}
 \title{Solve P-Median facility location problem}
 \usage{
-rust_p_median(cost_matrix, weights, n_facilities, fixed_facilities, max_distance)
+rust_p_median(
+  cost_matrix,
+  weights,
+  n_facilities,
+  fixed_facilities,
+  max_distance
+)
 }
 \arguments{
 \item{cost_matrix}{Cost/distance matrix (demand x facilities)}
