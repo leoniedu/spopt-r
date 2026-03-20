@@ -27,6 +27,9 @@ tools/libspopt.a
 
 # Claude
 .claude
+
+# Git worktrees
+.worktrees/
 src/rust/vendor
 src/vendor/
 src/Makevars
