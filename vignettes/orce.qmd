@@ -167,26 +167,36 @@ distancias_ucs_df$duracao_horas <- 0
 distancias_ucs_df$diaria_municipio <- FALSE
 distancias_ucs_df$diaria_pernoite <- FALSE
 
+orce_pkg_args <- list(
+  ucs = ucs_df,
+  agencias = agencias_df,
+  distancias_ucs = distancias_ucs_df,
+  dias_coleta_entrevistador_max = worker_capacity,
+  remuneracao_entrevistador = worker_cost,
+  n_entrevistadores_min = 1L,
+  custo_litro_combustivel = fuel_cost,
+  custo_hora_viagem = 0,
+  kml = kml,
+  dias_treinamento = 0,
+  peso_tsp = 0,
+  adicional_troca_jurisdicao = 0,
+  rel_tol = 0,
+  use_cache = FALSE
+)
+
+# Integer workers (default)
 orce_pkg_time <- system.time({
-  orce_pkg_result <- orce::orce(
-    ucs = ucs_df,
-    agencias = agencias_df,
-    distancias_ucs = distancias_ucs_df,
-    dias_coleta_entrevistador_max = worker_capacity,
-    remuneracao_entrevistador = worker_cost,
-    n_entrevistadores_min = 1L,
-    custo_litro_combustivel = fuel_cost,
-    custo_hora_viagem = 0,
-    kml = kml,
-    dias_treinamento = 0,
-    peso_tsp = 0,
-    adicional_troca_jurisdicao = 0,
-    rel_tol = 0,
-    use_cache = FALSE
-  )
+  orce_pkg_result <- do.call(orce::orce, orce_pkg_args)
+})
+
+# Continuous workers (LP relaxation of w[j])
+orce_pkg_cont_time <- system.time({
+  orce_pkg_cont_result <- do.call(orce::orce,
+    c(orce_pkg_args, n_entrevistadores_tipo = "continuous"))
 })
 
 orce_pkg_obj <- attr(orce_pkg_result, "valor")
+orce_pkg_cont_obj <- attr(orce_pkg_cont_result, "valor")
 ```
 
 ## Comparison
@@ -208,31 +218,46 @@ has_orce_pkg <- exists("orce_pkg_result")
 
 comparison <- data.frame(
   Model = c("cflp()", "orce()",
-            if (has_orce_pkg) "orce::orce()"),
+            if (has_orce_pkg) c("orce::orce(integer)", "orce::orce(continuous)")),
   Facilities = c(
     sum(cflp_result$facilities$.selected),
     orce_meta$n_selected,
-    if (has_orce_pkg) nrow(orce_pkg_result$resultado_agencias_otimo)
+    if (has_orce_pkg) c(
+      nrow(orce_pkg_result$resultado_agencias_otimo),
+      nrow(orce_pkg_cont_result$resultado_agencias_otimo)
+    )
   ),
   Transport = round(c(
     cflp_transport,
     orce_meta$transport_cost,
-    if (has_orce_pkg) sum(orce_pkg_result$resultado_ucs_otimo$custo_deslocamento)
+    if (has_orce_pkg) c(
+      sum(orce_pkg_result$resultado_ucs_otimo$custo_deslocamento),
+      sum(orce_pkg_cont_result$resultado_ucs_otimo$custo_deslocamento)
+    )
   ), 1),
   Fixed = round(c(
     cflp_fixed,
     orce_meta$facility_cost,
-    if (has_orce_pkg) sum(orce_pkg_result$resultado_agencias_otimo$custo_fixo)
+    if (has_orce_pkg) c(
+      sum(orce_pkg_result$resultado_agencias_otimo$custo_fixo),
+      sum(orce_pkg_cont_result$resultado_agencias_otimo$custo_fixo)
+    )
   ), 1),
   Workers = round(c(
     cflp_worker_total,
     orce_meta$worker_cost_total,
-    if (has_orce_pkg) sum(orce_pkg_result$resultado_agencias_otimo$custo_total_entrevistadores)
+    if (has_orce_pkg) c(
+      sum(orce_pkg_result$resultado_agencias_otimo$custo_total_entrevistadores),
+      sum(orce_pkg_cont_result$resultado_agencias_otimo$custo_total_entrevistadores)
+    )
   ), 1),
   `Time (s)` = round(c(
     cflp_meta$solve_time,
     orce_meta$solve_time,
-    if (has_orce_pkg) orce_pkg_time[["elapsed"]]
+    if (has_orce_pkg) c(
+      orce_pkg_time[["elapsed"]],
+      orce_pkg_cont_time[["elapsed"]]
+    )
   ), 3),
   check.names = FALSE
 )
