@@ -19,7 +19,7 @@ rust_p_median(
 
 \item{n_facilities}{Number of facilities to locate (p)}
 
-\item{fixed_facilities}{Optional indices of pre-selected facilities (1-based, NULL for none)}
+\item{fixed_facilities}{Optional indices of pre-selected facilities (1-based)}
 
 \item{max_distance}{Optional maximum distance for assignments}
 }

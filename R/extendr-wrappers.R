@@ -144,7 +144,7 @@ rust_max_p <- function(attrs, threshold_var, threshold, adj_i, adj_j, n_iteratio
 #' @param cost_matrix Cost/distance matrix (demand x facilities)
 #' @param weights Demand weights
 #' @param n_facilities Number of facilities to locate (p)
-#' @param fixed_facilities Optional indices of pre-selected facilities (1-based, NULL for none)
+#' @param fixed_facilities Optional indices of pre-selected facilities (1-based)
 #' @param max_distance Optional maximum distance for assignments
 #' @return List with selected facilities and assignments
 #' @export
@@ -164,7 +164,6 @@ rust_lscp <- function(cost_matrix, service_radius) .Call(wrap__rust_lscp, cost_m
 #' @param weights Demand weights
 #' @param service_radius Maximum service distance
 #' @param n_facilities Number of facilities to locate
-#' @param fixed_facilities Optional indices of pre-selected facilities (1-based, NULL for none)
 #' @return List with selected facilities and coverage
 #' @export
 rust_mclp <- function(cost_matrix, weights, service_radius, n_facilities, fixed_facilities) .Call(wrap__rust_mclp, cost_matrix, weights, service_radius, n_facilities, fixed_facilities)
@@ -174,7 +173,6 @@ rust_mclp <- function(cost_matrix, weights, service_radius, n_facilities, fixed_
 #' @param cost_matrix Cost/distance matrix (demand x facilities)
 #' @param n_facilities Number of facilities to locate
 #' @param method Algorithm method: "binary_search" (default) or "mip"
-#' @param fixed_facilities Optional indices of pre-selected facilities (1-based, NULL for none)
 #' @return List with selected facilities, assignments, and max distance
 #' @export
 rust_p_center <- function(cost_matrix, n_facilities, method, fixed_facilities) .Call(wrap__rust_p_center, cost_matrix, n_facilities, method, fixed_facilities)
@@ -214,6 +212,21 @@ rust_frlm_greedy <- function(n_candidates, path_candidates, path_offsets, path_d
 #' @return List with selected facilities, assignments, utilizations
 #' @export
 rust_cflp <- function(cost_matrix, weights, capacities, n_facilities, facility_costs, max_distance) .Call(wrap__rust_cflp, cost_matrix, weights, capacities, n_facilities, facility_costs, max_distance)
+
+#' Solve ORCE Warehouse Location Problem
+#'
+#' Minimize transport + facility + worker costs with integer worker variables.
+#'
+#' @param cost_matrix Cost matrix (demand x facilities)
+#' @param weights Demand weights
+#' @param facility_costs Fixed cost to open each facility
+#' @param worker_cost Cost per worker (scalar)
+#' @param worker_capacity Max demand one worker handles (scalar)
+#' @param min_workers Min workers if facility open (scalar)
+#' @param max_workers Max workers per facility
+#' @return List with selected facilities, assignments, workers, costs
+#' @export
+rust_orce <- function(cost_matrix, weights, facility_costs, worker_cost, worker_capacity, min_workers, max_workers) .Call(wrap__rust_orce, cost_matrix, weights, facility_costs, worker_cost, worker_capacity, min_workers, max_workers)
 
 #' Compute Huff Model probabilities
 #'

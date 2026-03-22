@@ -484,6 +484,40 @@ fn rust_cflp(
     )
 }
 
+/// Solve ORCE Warehouse Location Problem
+///
+/// Minimize transport + facility + worker costs with integer worker variables.
+///
+/// @param cost_matrix Cost matrix (demand x facilities)
+/// @param weights Demand weights
+/// @param facility_costs Fixed cost to open each facility
+/// @param worker_cost Cost per worker (scalar)
+/// @param worker_capacity Max demand one worker handles (scalar)
+/// @param min_workers Min workers if facility open (scalar)
+/// @param max_workers Max workers per facility
+/// @return List with selected facilities, assignments, workers, costs
+/// @export
+#[extendr]
+fn rust_orce(
+    cost_matrix: RMatrix<f64>,
+    weights: Vec<f64>,
+    facility_costs: Vec<f64>,
+    worker_cost: f64,
+    worker_capacity: f64,
+    min_workers: i32,
+    max_workers: Vec<i32>,
+) -> List {
+    locate::orce::solve(
+        cost_matrix,
+        &weights,
+        &facility_costs,
+        worker_cost,
+        worker_capacity,
+        min_workers,
+        &max_workers,
+    )
+}
+
 /// Compute Huff Model probabilities
 ///
 /// Computes probability surface based on distance decay and attractiveness.
@@ -778,6 +812,7 @@ extendr_module! {
     fn rust_p_dispersion;
     fn rust_frlm_greedy;
     fn rust_cflp;
+    fn rust_orce;
     fn rust_huff;
     fn rust_tsp;
     fn rust_vrp;
