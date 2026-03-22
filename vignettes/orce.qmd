@@ -6,6 +6,7 @@ editor: visual
 
 ```{r setup, include = FALSE}
 library(spopt)
+library(tinytable)
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 ```
 
@@ -19,31 +20,33 @@ This vignette compares three approaches to the same problem:
 
 ## A synthetic problem
 
-We create 25 demand points (collection units) and 8 candidate facilities (agencies). Each demand point has a workload (collection days), and each facility has a fixed opening cost and a maximum number of workers.
+We create 200 demand points (collection units) and 30 candidate facilities (agencies). Each demand point has a workload (collection days), and each facility has a fixed opening cost and a maximum number of workers.
 
 ```{r problem-setup}
 library(sf)
 
 set.seed(2024)
 
-n_demand <- 25
-n_fac <- 8
+n_demand <- 200
+n_fac <- 30
 
-# Demand points: scattered across a 100x100 km area
+# Demand points: scattered across a 500x500 km area
 demand <- st_as_sf(data.frame(
   id = seq_len(n_demand),
-  x = runif(n_demand, 0, 100),
-  y = runif(n_demand, 0, 100),
+  x = runif(n_demand, 0, 500),
+  y = runif(n_demand, 0, 500),
   workload = as.integer(rpois(n_demand, 15) + 5)
 ), coords = c("x", "y"))
 
-# Facilities: 8 candidates at strategic locations
+# Facilities: 30 candidates at random locations
+fac_x <- runif(n_fac, 10, 490)
+fac_y <- runif(n_fac, 10, 490)
 facilities <- st_as_sf(data.frame(
   id = seq_len(n_fac),
-  x = c(15, 85, 50, 25, 75, 40, 60, 10),
-  y = c(20, 80, 50, 70, 30, 90, 15, 50),
-  fixed_cost = c(500, 600, 400, 550, 450, 700, 500, 650),
-  max_workers = c(4L, 5L, 6L, 3L, 4L, 3L, 5L, 3L)
+  x = fac_x,
+  y = fac_y,
+  fixed_cost = as.integer(runif(n_fac, 300, 800)),
+  max_workers = as.integer(sample(3:8, n_fac, replace = TRUE))
 ), coords = c("x", "y"))
 ```
 
@@ -90,14 +93,9 @@ cflp_result <- cflp(
   facility_cost_col = "fixed_cost",
   cost_matrix = unit_cost_mat
 )
-```
 
-```{r cflp-results}
 cflp_meta <- attr(cflp_result, "spopt")
 cflp_selected <- which(cflp_result$facilities$.selected)
-
-cat("CFLP selected facilities:", paste(cflp_selected, collapse = ", "), "\n")
-cat("Objective (transport + fixed):", round(cflp_meta$objective, 1), "\n")
 ```
 
 ## Approach 2: spopt::orce()
@@ -117,12 +115,6 @@ orce_result <- orce(
 
 orce_meta <- attr(orce_result, "spopt")
 orce_selected <- which(orce_result$facilities$.selected)
-
-cat("ORCE selected facilities:", paste(orce_selected, collapse = ", "), "\n")
-cat("Objective (transport + fixed + workers):", round(orce_meta$objective, 1), "\n")
-cat("  Transport:", round(orce_meta$transport_cost, 1), "\n")
-cat("  Fixed costs:", round(orce_meta$facility_cost, 1), "\n")
-cat("  Worker costs:", round(orce_meta$worker_cost_total, 1), "\n")
 ```
 
 Workers per open facility:
@@ -134,7 +126,7 @@ data.frame(
   workers = open$.workers,
   assigned = open$.n_assigned,
   utilization = round(open$.utilization, 2)
-)
+) |> tt()
 ```
 
 ## Approach 3: orce::orce() (reference)
@@ -175,33 +167,32 @@ distancias_ucs_df$duracao_horas <- 0
 distancias_ucs_df$diaria_municipio <- FALSE
 distancias_ucs_df$diaria_pernoite <- FALSE
 
-orce_pkg_result <- orce::orce(
-  ucs = ucs_df,
-  agencias = agencias_df,
-  distancias_ucs = distancias_ucs_df,
-  dias_coleta_entrevistador_max = worker_capacity,
-  remuneracao_entrevistador = worker_cost,
-  n_entrevistadores_min = 1L,
-  custo_litro_combustivel = fuel_cost,
-  custo_hora_viagem = 0,
-  kml = kml,
-  dias_treinamento = 0,
-  peso_tsp = 0,
-  adicional_troca_jurisdicao = 0,
-  rel_tol = 0,
-  use_cache = FALSE
-)
+orce_pkg_time <- system.time({
+  orce_pkg_result <- orce::orce(
+    ucs = ucs_df,
+    agencias = agencias_df,
+    distancias_ucs = distancias_ucs_df,
+    dias_coleta_entrevistador_max = worker_capacity,
+    remuneracao_entrevistador = worker_cost,
+    n_entrevistadores_min = 1L,
+    custo_litro_combustivel = fuel_cost,
+    custo_hora_viagem = 0,
+    kml = kml,
+    dias_treinamento = 0,
+    peso_tsp = 0,
+    adicional_troca_jurisdicao = 0,
+    rel_tol = 0,
+    use_cache = FALSE
+  )
+})
 
 orce_pkg_obj <- attr(orce_pkg_result, "valor")
-cat("orce::orce() objective:", round(orce_pkg_obj, 1), "\n")
-cat("spopt::orce() objective:", round(orce_meta$objective, 1), "\n")
-cat("Difference:", round(abs(orce_meta$objective - orce_pkg_obj), 4), "\n")
 ```
 
 ## Comparison
 
 ```{r comparison-table}
-# CFLP transport cost = objective - fixed costs (cflp objective = weighted transport + fixed)
+# CFLP transport cost = objective - fixed costs
 cflp_transport <- cflp_meta$objective - sum(facilities$fixed_cost[cflp_selected])
 cflp_fixed <- sum(facilities$fixed_cost[cflp_selected])
 
@@ -213,39 +204,54 @@ cflp_workers_per_fac <- ceiling(
 )
 cflp_worker_total <- sum(cflp_workers_per_fac) * worker_cost
 
+has_orce_pkg <- exists("orce_pkg_result")
+
 comparison <- data.frame(
-  Model = c("cflp()", "orce()", "orce::orce()"),
+  Model = c("cflp()", "orce()",
+            if (has_orce_pkg) "orce::orce()"),
   Facilities = c(
     sum(cflp_result$facilities$.selected),
     orce_meta$n_selected,
-    nrow(orce_pkg_result$resultado_agencias_otimo)
+    if (has_orce_pkg) nrow(orce_pkg_result$resultado_agencias_otimo)
   ),
   Transport = round(c(
     cflp_transport,
     orce_meta$transport_cost,
-    sum(orce_pkg_result$resultado_ucs_otimo$custo_deslocamento)
+    if (has_orce_pkg) sum(orce_pkg_result$resultado_ucs_otimo$custo_deslocamento)
   ), 1),
   Fixed = round(c(
     cflp_fixed,
     orce_meta$facility_cost,
-    sum(orce_pkg_result$resultado_agencias_otimo$custo_fixo)
+    if (has_orce_pkg) sum(orce_pkg_result$resultado_agencias_otimo$custo_fixo)
   ), 1),
   Workers = round(c(
     cflp_worker_total,
     orce_meta$worker_cost_total,
-    sum(orce_pkg_result$resultado_agencias_otimo$custo_total_entrevistadores)
-  ), 1)
+    if (has_orce_pkg) sum(orce_pkg_result$resultado_agencias_otimo$custo_total_entrevistadores)
+  ), 1),
+  `Time (s)` = round(c(
+    cflp_meta$solve_time,
+    orce_meta$solve_time,
+    if (has_orce_pkg) orce_pkg_time[["elapsed"]]
+  ), 3),
+  check.names = FALSE
 )
 comparison$Total <- comparison$Transport + comparison$Fixed + comparison$Workers
-comparison
+comparison |> tt()
 ```
 
 The key insight: `cflp()` and `orce()` may select different facilities because `orce()` accounts for workforce costs during optimization, while `cflp()` only considers transport and fixed costs. When worker costs are significant (as they often are), the `orce()` solution is more cost-effective overall.
 
 ## When to use which
 
-| Function | Use when |
-|---|---|
-| `cflp()` | Worker costs are negligible or already folded into fixed costs |
-| `orce()` | Worker allocation matters --- salary is a significant cost component |
-| `orce::orce()` | You need the full IBGE model (multi-period, daily allowances, TSP) |
+```{r when-table, echo = FALSE}
+data.frame(
+  Function = c("`cflp()`", "`orce()`", "`orce::orce()`"),
+  `Use when` = c(
+    "Worker costs are negligible or already folded into fixed costs",
+    "Worker allocation matters --- salary is a significant cost component",
+    "You need the full IBGE model (multi-period, daily allowances, TSP)"
+  ),
+  check.names = FALSE
+) |> tt()
+```
