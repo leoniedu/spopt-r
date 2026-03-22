@@ -190,10 +190,97 @@ test_that("orce matches orce package results", {
   skip_if_not_installed("orce")
   skip_if_not(is.loaded("wrap__rust_orce"), "Rust compilation required")
 
-  # This test sets up an identical problem in both spopt::orce() and
-  # orce::orce() and verifies they produce the same objective value.
-  # The exact setup depends on the orce package API — this is a
-  # placeholder that should be filled in with a concrete example
-  # once the orce package interface is confirmed.
-  skip("TODO: implement comparison test with orce package")
+  # Synthetic problem: 8 demand points, 4 facilities, single period.
+  # No diarias, no TSP, no training, no travel-time cost — pure distance cost.
+  set.seed(123)
+  n_demand <- 8L
+  n_fac <- 4L
+
+  demand_xy <- data.frame(x = runif(n_demand), y = runif(n_demand))
+  fac_xy <- data.frame(x = runif(n_fac), y = runif(n_fac))
+
+  workload <- as.integer(rpois(n_demand, 15) + 5L) # dias_coleta per UC
+  facility_cost <- c(100, 200, 150, 250)
+  max_workers <- c(3L, 4L, 3L, 5L)
+  worker_cost_val <- 50
+  worker_cap <- 30L
+  min_workers_val <- 1L
+  kml <- 10
+  fuel_cost <- 6
+
+  # Distance matrix (Euclidean, treat as km for simplicity)
+  dist_km <- as.matrix(dist(rbind(demand_xy, fac_xy), method = "euclidean"))
+  dist_km <- dist_km[1:n_demand, (n_demand + 1):(n_demand + n_fac)]
+
+  # spopt transport cost: cost_matrix[i,j] = workload[i] * 2 * dist_km[i,j] / kml * fuel_cost
+  cost_mat <- outer(workload, rep(1, n_fac)) * 2 * dist_km / kml * fuel_cost
+
+  # --- spopt ---
+  demand_sf <- sf::st_as_sf(
+    data.frame(demand_xy, workload = workload),
+    coords = c("x", "y")
+  )
+  facilities_sf <- sf::st_as_sf(
+    data.frame(fac_xy, fixed_cost = facility_cost, max_workers = max_workers),
+    coords = c("x", "y")
+  )
+
+  spopt_result <- orce(demand_sf, facilities_sf,
+    weight_col = "workload", cost_matrix = cost_mat,
+    facility_cost_col = "fixed_cost", worker_cost = worker_cost_val,
+    worker_capacity = worker_cap, max_workers_col = "max_workers",
+    min_workers = min_workers_val
+  )
+  spopt_obj <- attr(spopt_result, "spopt")$objective
+
+  # --- orce package ---
+  uc_ids <- paste0("uc_", seq_len(n_demand))
+  ag_ids <- paste0("ag_", seq_len(n_fac))
+
+  ucs_df <- data.frame(
+    uc = uc_ids,
+    agencia_codigo = ag_ids[1], # arbitrary jurisdiction (not used in opt)
+    dias_coleta = workload,
+    viagens = 1L,
+    data = "2024-01",
+    diaria_valor = 0,
+    stringsAsFactors = FALSE
+  )
+
+  agencias_df <- data.frame(
+    agencia_codigo = ag_ids,
+    n_entrevistadores_agencia_max = max_workers,
+    custo_fixo = facility_cost,
+    diaria_valor = 0,
+    stringsAsFactors = FALSE
+  )
+
+  distancias_ucs_df <- expand.grid(
+    uc = uc_ids, agencia_codigo = ag_ids,
+    stringsAsFactors = FALSE
+  )
+  distancias_ucs_df$distancia_km <- as.vector(dist_km)
+  distancias_ucs_df$duracao_horas <- 0
+  distancias_ucs_df$diaria_municipio <- FALSE
+  distancias_ucs_df$diaria_pernoite <- FALSE
+
+  orce_result <- orce::orce(
+    ucs = ucs_df,
+    agencias = agencias_df,
+    distancias_ucs = distancias_ucs_df,
+    dias_coleta_entrevistador_max = worker_cap,
+    remuneracao_entrevistador = worker_cost_val,
+    n_entrevistadores_min = min_workers_val,
+    custo_litro_combustivel = fuel_cost,
+    custo_hora_viagem = 0,
+    kml = kml,
+    dias_treinamento = 0,
+    peso_tsp = 0,
+    adicional_troca_jurisdicao = 0,
+    rel_tol = 0,
+    use_cache = FALSE
+  )
+  orce_obj <- attr(orce_result, "valor")
+
+  expect_equal(spopt_obj, orce_obj, tolerance = 1e-4)
 })
