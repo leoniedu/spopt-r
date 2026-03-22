@@ -47,7 +47,15 @@ orce(
 - **No `max_distance`**: dropped for v1 simplicity. Users can pre-filter their
   cost matrix if needed.
 - **No demand splitting**: each demand point is assigned to exactly one facility
-  (binary `x[i,j]`), matching orce's model.
+  (binary `x[i,j]`), matching orce's model. In Rust, `x[i,j]` must use
+  `add_integer_column()` (not `add_column()` as in cflp which allows continuous
+  splitting).
+- **Cost matrix is not weight-multiplied**: unlike cflp where the objective
+  coefficient is `weight[i] * cost[i,j]`, here `cost[i,j]` is the full
+  pre-computed transport cost. The `weight_col` is used only in the capacity
+  constraint (constraint 3).
+- **`verbose` is R-side only**: prints problem dimensions and summary before
+  calling Rust. Not passed to the Rust solver.
 - **English throughout**: follows spopt-r convention. Portuguese context appears
   only in vignette examples.
 
@@ -125,7 +133,7 @@ list(
 | `objective`        | numeric | Total cost                           |
 | `transport_cost`   | numeric | Transport component                  |
 | `facility_cost`    | numeric | Fixed cost component                 |
-| `worker_cost`      | numeric | Worker cost component                |
+| `worker_cost_total` | numeric | Worker cost component               |
 | `solve_time`       | numeric | Seconds                              |
 | `solver_status`    | character | HiGHS status string                |
 
@@ -204,8 +212,11 @@ Before calling Rust:
 - `weight_col`, `facility_cost_col`, `max_workers_col` exist in their respective sf objects
 - No NAs in any input columns
 - `cost_matrix` dimensions match `nrow(demand) × nrow(facilities)`
+- `sanitize_cost_matrix()` on cost_matrix (replace NA/Inf with large finite values)
 - `worker_cost > 0`, `worker_capacity > 0`, `min_workers >= 1`
-- Feasibility: `sum(max_workers) * worker_capacity >= sum(weights)`
+- Warn if any facility has `max_workers[j] < min_workers` (facility can never open)
+- Feasibility: `sum(max_workers[j] where max_workers[j] >= min_workers) * worker_capacity >= sum(weights)`
+  (only count facilities that could actually open)
 
 ## Tests
 
@@ -214,7 +225,7 @@ Before calling Rust:
 - Basic solve with known small problem
 - Verify all output columns and metadata fields
 - Infeasible problem returns error
-- Cost decomposition: `objective ≈ transport_cost + facility_cost + worker_cost`
+- Cost decomposition: `objective ≈ transport_cost + facility_cost + worker_cost_total`
 - **Comparison with orce package**: set up identical problem using `orce::orce()`
   with ROI/HiGHS backend, verify same facilities selected and same objective
   value (within solver tolerance). Wrapped in `skip_if_not_installed("orce")`.
