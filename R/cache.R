@@ -13,7 +13,8 @@
   "rust_mclp",
   "rust_p_center",
   "rust_p_dispersion",
-  "rust_frlm_greedy"
+  "rust_frlm_greedy",
+  "rust_orce"
 )
 
 # Solver dispatch table ------------------------------------------------------
