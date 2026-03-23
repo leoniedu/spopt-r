@@ -14,6 +14,9 @@ orce(
   worker_capacity,
   max_workers_col,
   min_workers = 1L,
+  peso_tsp = 0,
+  max_iter_tsp = 10L,
+  distance_matrix_full = NULL,
   verbose = FALSE
 )
 }
@@ -42,6 +45,22 @@ maximum number of workers each facility can employ.}
 \item{min_workers}{Integer scalar. Minimum number of workers at each open
 facility. Default is 1.}
 
+\item{peso_tsp}{Numeric scalar. Weight for TSP routing penalty. When
+greater than 0, an iterative location-routing loop adjusts the cost
+matrix using cheapest insertion costs from per-facility TSP tours, which
+encourages geographically coherent assignments. Default is 0 (no routing
+penalty).}
+
+\item{max_iter_tsp}{Integer scalar. Maximum number of location-routing
+iterations when \code{peso_tsp > 0}. Default is 10.}
+
+\item{distance_matrix_full}{Square numeric matrix of dimensions
+\verb{(n_demand + n_fac) x (n_demand + n_fac)}. Required when \code{peso_tsp > 0}.
+Rows/columns \code{1:n_demand} are demand points (same order as \code{demand}),
+rows/columns \code{(n_demand+1):(n_demand+n_fac)} are facilities (same order
+as \code{facilities}). Typically built as
+\code{distance_matrix(rbind(demand, facilities))}.}
+
 \item{verbose}{Logical. Print problem dimensions before solving. Default
 is FALSE.}
 }
@@ -62,6 +81,11 @@ Metadata is stored in the "spopt" attribute, including:
 \item \code{worker_cost_total}: Worker cost component
 \item \code{n_selected}: Number of open facilities
 \item \code{solve_time}: Solver runtime in seconds
+\item \code{tsp_iterations}: Number of location-routing iterations (0 when
+\code{peso_tsp = 0})
+\item \code{tsp_converged}: Logical. TRUE if assignments stabilized before
+\code{max_iter_tsp}
+\item \code{peso_tsp}: The routing penalty weight used
 }
 }
 \description{
@@ -84,6 +108,22 @@ the package vignette for full details.
 The \code{cost_matrix} should contain pre-computed transport costs. Users can
 build this from distance and duration data using a helper, e.g.:
 \code{cost = distance_km / kml * fuel_cost + duration_hours * hourly_cost}
+\subsection{Iterative location-routing (\code{peso_tsp > 0})}{
+
+When \code{peso_tsp > 0}, the solver iteratively refines assignments by adding
+a TSP routing penalty to the cost matrix:
+\enumerate{
+\item Solve ORCE with current costs.
+\item For each opened facility, solve a TSP tour over its assigned demands.
+\item For every (demand, facility) pair, compute the cheapest insertion cost
+of adding that demand into the facility's tour.
+\item Update: \code{cost_new = cost_original + peso_tsp * insertion_cost}.
+\item Repeat until assignments stabilize or \code{max_iter_tsp} is reached.
+}
+
+This encourages geographically compact clusters without the scalability
+issues of embedding route variables directly in the MIP.
+}
 }
 \examples{
 \dontrun{
@@ -107,11 +147,17 @@ result <- orce(demand, facilities,
   worker_capacity = 100, max_workers_col = "max_workers"
 )
 
-# Which facilities are open?
-result$facilities[result$facilities$.selected, ]
-
-# Cost breakdown
-attr(result, "spopt")
+# With routing penalty
+all_pts <- st_as_sf(as.data.frame(rbind(
+  st_coordinates(demand), st_coordinates(facilities)
+)), coords = c("X", "Y"))
+dm_full <- distance_matrix(all_pts)
+result2 <- orce(demand, facilities,
+  weight_col = "workload", cost_matrix = cost,
+  facility_cost_col = "fixed_cost", worker_cost = 1000,
+  worker_capacity = 100, max_workers_col = "max_workers",
+  peso_tsp = 1, distance_matrix_full = dm_full
+)
 }
 
 }

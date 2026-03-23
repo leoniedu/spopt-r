@@ -185,6 +185,187 @@ test_that("orce warns on unopenable facilities", {
   )
 })
 
+test_that("orce with peso_tsp returns correct structure and metadata", {
+  skip_if_not_installed("sf")
+  skip_if_not(is.loaded("wrap__rust_orce"), "Rust compilation required")
+
+  set.seed(42)
+  demand <- sf::st_as_sf(
+    data.frame(x = runif(15), y = runif(15), workload = rpois(15, 20)),
+    coords = c("x", "y")
+  )
+  facilities <- sf::st_as_sf(
+    data.frame(
+      x = runif(4), y = runif(4),
+      fixed_cost = c(100, 200, 150, 300),
+      max_workers = c(3L, 4L, 3L, 5L)
+    ),
+    coords = c("x", "y")
+  )
+
+  cost <- distance_matrix(demand, facilities)
+  all_coords <- as.data.frame(rbind(
+    sf::st_coordinates(demand), sf::st_coordinates(facilities)
+  ))
+  all_points <- sf::st_as_sf(all_coords, coords = c("X", "Y"))
+  dm_full <- distance_matrix(all_points)
+
+  result <- orce(demand, facilities,
+    weight_col = "workload", cost_matrix = cost,
+    facility_cost_col = "fixed_cost", worker_cost = 50,
+    worker_capacity = 100, max_workers_col = "max_workers",
+    peso_tsp = 1, distance_matrix_full = dm_full
+  )
+
+  expect_s3_class(result, "spopt_orce")
+
+  meta <- attr(result, "spopt")
+  expect_true("tsp_iterations" %in% names(meta))
+  expect_true("tsp_converged" %in% names(meta))
+  expect_true("peso_tsp" %in% names(meta))
+  expect_equal(meta$peso_tsp, 1)
+  expect_true(meta$tsp_iterations >= 1L)
+
+  # Cost decomposition should use original cost matrix
+  cost_sum <- meta$transport_cost + meta$facility_cost + meta$worker_cost_total
+  expect_equal(meta$objective, cost_sum, tolerance = 1e-6)
+})
+
+test_that("orce with peso_tsp=0 matches baseline", {
+  skip_if_not_installed("sf")
+  skip_if_not(is.loaded("wrap__rust_orce"), "Rust compilation required")
+
+  set.seed(42)
+  demand <- sf::st_as_sf(
+    data.frame(x = runif(15), y = runif(15), workload = rpois(15, 20)),
+    coords = c("x", "y")
+  )
+  facilities <- sf::st_as_sf(
+    data.frame(
+      x = runif(4), y = runif(4),
+      fixed_cost = c(100, 200, 150, 300),
+      max_workers = c(3L, 4L, 3L, 5L)
+    ),
+    coords = c("x", "y")
+  )
+
+  cost <- distance_matrix(demand, facilities)
+
+  result_base <- orce(demand, facilities,
+    weight_col = "workload", cost_matrix = cost,
+    facility_cost_col = "fixed_cost", worker_cost = 50,
+    worker_capacity = 100, max_workers_col = "max_workers"
+  )
+  result_tsp0 <- orce(demand, facilities,
+    weight_col = "workload", cost_matrix = cost,
+    facility_cost_col = "fixed_cost", worker_cost = 50,
+    worker_capacity = 100, max_workers_col = "max_workers",
+    peso_tsp = 0
+  )
+
+  meta_base <- attr(result_base, "spopt")
+  meta_tsp0 <- attr(result_tsp0, "spopt")
+
+  expect_equal(meta_base$objective, meta_tsp0$objective)
+  expect_equal(result_base$demand$.facility, result_tsp0$demand$.facility)
+  expect_equal(meta_tsp0$tsp_iterations, 0L)
+  expect_true(is.na(meta_tsp0$tsp_converged))
+})
+
+test_that("orce with peso_tsp validates inputs", {
+  skip_if_not_installed("sf")
+
+  demand <- sf::st_as_sf(
+    data.frame(x = 1, y = 1, workload = 10),
+    coords = c("x", "y")
+  )
+  facilities <- sf::st_as_sf(
+    data.frame(x = 1.1, y = 1.1, fixed_cost = 100, max_workers = 5L),
+    coords = c("x", "y")
+  )
+  cost <- matrix(0.1, nrow = 1, ncol = 1)
+
+  # peso_tsp > 0 without distance_matrix_full
+  expect_error(
+    orce(demand, facilities, weight_col = "workload", cost_matrix = cost,
+         facility_cost_col = "fixed_cost", worker_cost = 50,
+         worker_capacity = 100, max_workers_col = "max_workers",
+         peso_tsp = 1),
+    "distance_matrix_full.*required"
+  )
+
+  # Wrong-sized distance_matrix_full
+  expect_error(
+    orce(demand, facilities, weight_col = "workload", cost_matrix = cost,
+         facility_cost_col = "fixed_cost", worker_cost = 50,
+         worker_capacity = 100, max_workers_col = "max_workers",
+         peso_tsp = 1, distance_matrix_full = matrix(1, 3, 3)),
+    "matrix"
+  )
+
+  # Negative peso_tsp
+  expect_error(
+    orce(demand, facilities, weight_col = "workload", cost_matrix = cost,
+         facility_cost_col = "fixed_cost", worker_cost = 50,
+         worker_capacity = 100, max_workers_col = "max_workers",
+         peso_tsp = -1),
+    "non-negative"
+  )
+})
+
+test_that("orce with peso_tsp improves routing quality on split-cluster problem", {
+  skip_if_not_installed("sf")
+  skip_if_not(is.loaded("wrap__rust_orce"), "Rust compilation required")
+
+  # Two geographic clusters with a bridge point that naive assignment may split.
+  # Cluster A near depot 1 (x~0): demand at x = 0.05, 0.10, 0.15, 0.20
+  # Cluster B near depot 2 (x~1): demand at x = 0.85, 0.90, 0.95, 1.00
+  # Bridge point: x = 0.25 (close to cluster A but equidistant cost-wise
+  # if transport cost is scaled by workload).
+  set.seed(99)
+  demand <- sf::st_as_sf(data.frame(
+    x = c(0.05, 0.10, 0.15, 0.20, 0.25, 0.85, 0.90, 0.95, 1.00),
+    y = rep(0, 9),
+    workload = c(10, 10, 10, 10, 10, 10, 10, 10, 10)
+  ), coords = c("x", "y"))
+
+  facilities <- sf::st_as_sf(data.frame(
+    x = c(0, 1),
+    y = c(0, 0),
+    fixed_cost = c(10, 10),
+    max_workers = c(5L, 5L)
+  ), coords = c("x", "y"))
+
+  cost <- distance_matrix(demand, facilities)
+  all_coords <- as.data.frame(rbind(
+    sf::st_coordinates(demand), sf::st_coordinates(facilities)
+  ))
+  all_points <- sf::st_as_sf(all_coords, coords = c("X", "Y"))
+  dm_full <- distance_matrix(all_points)
+
+  result_no_tsp <- orce(demand, facilities,
+    weight_col = "workload", cost_matrix = cost,
+    facility_cost_col = "fixed_cost", worker_cost = 5,
+    worker_capacity = 100, max_workers_col = "max_workers",
+    peso_tsp = 0
+  )
+
+  result_tsp <- orce(demand, facilities,
+    weight_col = "workload", cost_matrix = cost,
+    facility_cost_col = "fixed_cost", worker_cost = 5,
+    worker_capacity = 100, max_workers_col = "max_workers",
+    peso_tsp = 1, distance_matrix_full = dm_full
+  )
+
+  # With TSP penalty, the 5 left-side points (including bridge at 0.25)
+  # should all be assigned to facility 1
+  left_cluster <- result_tsp$demand$.facility[1:5]
+  expect_true(
+    length(unique(left_cluster)) == 1,
+    label = "TSP penalty should keep left cluster together"
+  )
+})
+
 test_that("orce matches orce package results", {
   skip_if_not_installed("sf")
   skip_if_not_installed("orce")

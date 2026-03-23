@@ -16,7 +16,7 @@ struct WindowSpec<'a> {
 }
 
 /// Compute total cost of a tour/path.
-fn tour_cost(tour: &[usize], matrix: &[Vec<f64>]) -> f64 {
+pub(crate) fn tour_cost(tour: &[usize], matrix: &[Vec<f64>]) -> f64 {
     if tour.len() < 2 {
         return 0.0;
     }
@@ -29,7 +29,7 @@ fn tour_cost(tour: &[usize], matrix: &[Vec<f64>]) -> f64 {
 }
 
 /// Check if a matrix is symmetric (d[i][j] == d[j][i] for all i,j).
-pub fn is_symmetric(matrix: &[Vec<f64>]) -> bool {
+pub(crate) fn is_symmetric(matrix: &[Vec<f64>]) -> bool {
     let n = matrix.len();
     for i in 0..n {
         for j in i + 1..n {
@@ -95,7 +95,7 @@ fn schedule_tour(tour: &[usize], matrix: &[Vec<f64>], windows: &WindowSpec) -> O
 }
 
 /// Build a tour/path using nearest-neighbor heuristic with fixed endpoints.
-fn nearest_neighbor(n: usize, start: usize, end: usize, matrix: &[Vec<f64>]) -> Vec<usize> {
+pub(crate) fn nearest_neighbor(n: usize, start: usize, end: usize, matrix: &[Vec<f64>]) -> Vec<usize> {
     let mut visited = vec![false; n];
     let mut tour = Vec::with_capacity(n + usize::from(end == start));
 
@@ -174,7 +174,7 @@ fn feasible_insertion(
 }
 
 /// One pass of 2-opt improvement on interior segments with fixed endpoints.
-fn two_opt_pass(tour: &mut Vec<usize>, matrix: &[Vec<f64>], symmetric: bool) -> bool {
+pub(crate) fn two_opt_pass(tour: &mut Vec<usize>, matrix: &[Vec<f64>], symmetric: bool) -> bool {
     let n = tour.len();
     let mut improved = false;
 
@@ -231,7 +231,7 @@ fn two_opt_pass_windows(
 }
 
 /// One pass of or-opt: relocate segments of length 1, 2, 3.
-fn or_opt_pass(tour: &mut Vec<usize>, matrix: &[Vec<f64>]) -> bool {
+pub(crate) fn or_opt_pass(tour: &mut Vec<usize>, matrix: &[Vec<f64>]) -> bool {
     let mut improved = false;
     for seg_len in 1..=3 {
         if or_opt_segment(tour, matrix, seg_len) {

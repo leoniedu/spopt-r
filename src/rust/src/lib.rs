@@ -544,6 +544,81 @@ fn rust_huff(
     )
 }
 
+/// Compute cheapest insertion costs for iterative location-routing
+///
+/// Given a square distance matrix over (demand + facilities), current facility
+/// assignments, solve a TSP per facility and compute cheapest insertion cost
+/// for every (demand, facility) pair.
+///
+/// @param full_distance_matrix Square distance matrix (n_demand + n_fac) x (n_demand + n_fac)
+/// @param assignments 1-based facility assignments (length n_demand)
+/// @param n_demand Number of demand points
+/// @param n_fac Number of facilities
+/// @return n_demand x n_fac matrix of cheapest insertion costs
+/// @export
+#[extendr]
+fn rust_orce_insertion_costs(
+    full_distance_matrix: RMatrix<f64>,
+    assignments: Vec<i32>,
+    n_demand: i32,
+    n_fac: i32,
+) -> RMatrix<f64> {
+    let nd = n_demand as usize;
+    let nf = n_fac as usize;
+    let n_total = nd + nf;
+
+    let nrows = full_distance_matrix.nrows();
+    let ncols = full_distance_matrix.ncols();
+    if nrows != n_total || ncols != n_total {
+        extendr_api::throw_r_error(format!(
+            "full_distance_matrix must be {} x {}, got {} x {}",
+            n_total, n_total, nrows, ncols
+        ));
+    }
+    if assignments.len() != nd {
+        extendr_api::throw_r_error(format!(
+            "assignments must have length {}, got {}",
+            nd,
+            assignments.len()
+        ));
+    }
+
+    // Convert column-major R matrix to row-major Vec<Vec<f64>>
+    let flat = full_distance_matrix.data();
+    let mut matrix = vec![vec![0.0; n_total]; n_total];
+    for i in 0..n_total {
+        for j in 0..n_total {
+            matrix[i][j] = flat[j * n_total + i];
+        }
+    }
+
+    // Convert 1-based to 0-based assignments
+    let assignments_0: Vec<usize> = assignments
+        .iter()
+        .map(|&a| {
+            if a < 1 || a as usize > nf {
+                extendr_api::throw_r_error(format!(
+                    "assignment {} is out of range [1, {}]",
+                    a, nf
+                ));
+            }
+            (a - 1) as usize
+        })
+        .collect();
+
+    let costs = route::insertion::compute_insertion_costs(&matrix, &assignments_0, nd, nf);
+
+    // Build column-major R matrix (nd rows x nf cols)
+    let mut result_matrix = RMatrix::new(nd, nf);
+    for i in 0..nd {
+        for j in 0..nf {
+            result_matrix[[i, j]] = costs[i][j];
+        }
+    }
+
+    result_matrix
+}
+
 /// Solve Traveling Salesman Problem (TSP)
 ///
 /// Solve a closed tour, open route, or fixed-end path over a square
@@ -813,6 +888,7 @@ extendr_module! {
     fn rust_frlm_greedy;
     fn rust_cflp;
     fn rust_orce;
+    fn rust_orce_insertion_costs;
     fn rust_huff;
     fn rust_tsp;
     fn rust_vrp;

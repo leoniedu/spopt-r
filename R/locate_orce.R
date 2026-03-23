@@ -19,6 +19,19 @@
 #'   maximum number of workers each facility can employ.
 #' @param min_workers Integer scalar. Minimum number of workers at each open
 #'   facility. Default is 1.
+#' @param peso_tsp Numeric scalar. Weight for TSP routing penalty. When
+#'   greater than 0, an iterative location-routing loop adjusts the cost
+#'   matrix using cheapest insertion costs from per-facility TSP tours, which
+#'   encourages geographically coherent assignments. Default is 0 (no routing
+#'   penalty).
+#' @param max_iter_tsp Integer scalar. Maximum number of location-routing
+#'   iterations when `peso_tsp > 0`. Default is 10.
+#' @param distance_matrix_full Square numeric matrix of dimensions
+#'   `(n_demand + n_fac) x (n_demand + n_fac)`. Required when `peso_tsp > 0`.
+#'   Rows/columns `1:n_demand` are demand points (same order as `demand`),
+#'   rows/columns `(n_demand+1):(n_demand+n_fac)` are facilities (same order
+#'   as `facilities`). Typically built as
+#'   `distance_matrix(rbind(demand, facilities))`.
 #' @param verbose Logical. Print problem dimensions before solving. Default
 #'   is FALSE.
 #'
@@ -38,6 +51,11 @@
 #'     \item `worker_cost_total`: Worker cost component
 #'     \item `n_selected`: Number of open facilities
 #'     \item `solve_time`: Solver runtime in seconds
+#'     \item `tsp_iterations`: Number of location-routing iterations (0 when
+#'       `peso_tsp = 0`)
+#'     \item `tsp_converged`: Logical. TRUE if assignments stabilized before
+#'       `max_iter_tsp`
+#'     \item `peso_tsp`: The routing penalty weight used
 #'   }
 #'
 #' @details
@@ -55,6 +73,20 @@
 #' The `cost_matrix` should contain pre-computed transport costs. Users can
 #' build this from distance and duration data using a helper, e.g.:
 #' `cost = distance_km / kml * fuel_cost + duration_hours * hourly_cost`
+#'
+#' ## Iterative location-routing (`peso_tsp > 0`)
+#'
+#' When `peso_tsp > 0`, the solver iteratively refines assignments by adding
+#' a TSP routing penalty to the cost matrix:
+#' 1. Solve ORCE with current costs.
+#' 2. For each opened facility, solve a TSP tour over its assigned demands.
+#' 3. For every (demand, facility) pair, compute the cheapest insertion cost
+#'    of adding that demand into the facility's tour.
+#' 4. Update: `cost_new = cost_original + peso_tsp * insertion_cost`.
+#' 5. Repeat until assignments stabilize or `max_iter_tsp` is reached.
+#'
+#' This encourages geographically compact clusters without the scalability
+#' issues of embedding route variables directly in the MIP.
 #'
 #' @references
 #' Leon, E. et al. (2024). orce: Optimization of Statistical Data Collection
@@ -82,11 +114,17 @@
 #'   worker_capacity = 100, max_workers_col = "max_workers"
 #' )
 #'
-#' # Which facilities are open?
-#' result$facilities[result$facilities$.selected, ]
-#'
-#' # Cost breakdown
-#' attr(result, "spopt")
+#' # With routing penalty
+#' all_pts <- st_as_sf(as.data.frame(rbind(
+#'   st_coordinates(demand), st_coordinates(facilities)
+#' )), coords = c("X", "Y"))
+#' dm_full <- distance_matrix(all_pts)
+#' result2 <- orce(demand, facilities,
+#'   weight_col = "workload", cost_matrix = cost,
+#'   facility_cost_col = "fixed_cost", worker_cost = 1000,
+#'   worker_capacity = 100, max_workers_col = "max_workers",
+#'   peso_tsp = 1, distance_matrix_full = dm_full
+#' )
 #' }
 #'
 #' @export
@@ -99,6 +137,9 @@ orce <- function(demand,
                  worker_capacity,
                  max_workers_col,
                  min_workers = 1L,
+                 peso_tsp = 0,
+                 max_iter_tsp = 10L,
+                 distance_matrix_full = NULL,
                  verbose = FALSE) {
   # --- Input validation ---
   if (!inherits(demand, "sf")) {
@@ -144,6 +185,15 @@ orce <- function(demand,
     stop("`min_workers` must be a positive integer", call. = FALSE)
   }
 
+  # TSP parameters validation
+  if (!is.numeric(peso_tsp) || length(peso_tsp) != 1 || is.na(peso_tsp) || peso_tsp < 0) {
+    stop("`peso_tsp` must be a single non-negative number", call. = FALSE)
+  }
+  max_iter_tsp <- as.integer(max_iter_tsp)
+  if (is.na(max_iter_tsp) || max_iter_tsp < 1L) {
+    stop("`max_iter_tsp` must be a positive integer", call. = FALSE)
+  }
+
   # Warn about facilities that can never open
   unopenable <- max_workers < min_workers
   if (any(unopenable)) {
@@ -179,31 +229,119 @@ orce <- function(demand,
 
   cost_matrix <- sanitize_cost_matrix(cost_matrix)
 
+  # Validate distance_matrix_full when TSP is active
+  use_tsp <- peso_tsp > 0
+  if (use_tsp) {
+    n_total <- n_demand + n_fac
+    if (is.null(distance_matrix_full)) {
+      stop("`distance_matrix_full` is required when `peso_tsp > 0`", call. = FALSE)
+    }
+    if (!is.matrix(distance_matrix_full) ||
+        nrow(distance_matrix_full) != n_total ||
+        ncol(distance_matrix_full) != n_total) {
+      stop(sprintf(
+        "`distance_matrix_full` must be a %d x %d matrix, got %s",
+        n_total, n_total,
+        if (is.matrix(distance_matrix_full)) {
+          paste(dim(distance_matrix_full), collapse = " x ")
+        } else {
+          class(distance_matrix_full)[1]
+        }
+      ), call. = FALSE)
+    }
+    if (any(is.na(distance_matrix_full))) {
+      stop("`distance_matrix_full` must not contain NA values", call. = FALSE)
+    }
+  }
+
   if (verbose) {
     message(sprintf(
       "ORCE: %d demand points, %d facilities (%d openable), min_workers=%d",
       n_demand, n_fac, sum(!unopenable), min_workers
     ))
+    if (use_tsp) {
+      message(sprintf("  TSP routing penalty: peso_tsp=%.2f, max_iter=%d", peso_tsp, max_iter_tsp))
+    }
   }
 
   # --- Solve ---
   start_time <- Sys.time()
 
-  result <- spopt_solvers$rust_orce(
-    cost_matrix,
-    weights,
-    facility_costs,
-    worker_cost,
-    worker_capacity,
-    min_workers,
-    max_workers
-  )
+  if (!use_tsp) {
+    # Single ORCE solve (original behavior)
+    result <- spopt_solvers$rust_orce(
+      cost_matrix,
+      weights,
+      facility_costs,
+      worker_cost,
+      worker_capacity,
+      min_workers,
+      max_workers
+    )
+
+    if (!is.null(result$error)) {
+      stop(result$error, call. = FALSE)
+    }
+
+    tsp_iterations <- 0L
+    tsp_converged <- NA
+  } else {
+    # Iterative location-routing loop
+    current_cost_matrix <- cost_matrix
+    prev_assignments <- NULL
+    tsp_converged <- FALSE
+    tsp_iterations <- 0L
+
+    for (iter in seq_len(max_iter_tsp)) {
+      result <- spopt_solvers$rust_orce(
+        current_cost_matrix,
+        weights,
+        facility_costs,
+        worker_cost,
+        worker_capacity,
+        min_workers,
+        max_workers
+      )
+
+      if (!is.null(result$error)) {
+        stop(result$error, call. = FALSE)
+      }
+
+      tsp_iterations <- iter
+
+      # Check convergence
+      if (identical(result$assignments, prev_assignments)) {
+        tsp_converged <- TRUE
+        if (verbose) {
+          message(sprintf("  TSP converged after %d iteration(s)", iter))
+        }
+        break
+      }
+      prev_assignments <- result$assignments
+
+      # Compute insertion costs and update cost matrix for next iteration
+      if (iter < max_iter_tsp) {
+        insertion_costs <- rust_orce_insertion_costs(
+          distance_matrix_full,
+          result$assignments,
+          as.integer(n_demand),
+          as.integer(n_fac)
+        )
+        current_cost_matrix <- cost_matrix + peso_tsp * insertion_costs
+      }
+    }
+
+    # Recompute true cost decomposition using original cost matrix
+    result$transport_cost <- sum(
+      cost_matrix[cbind(seq_len(n_demand), result$assignments)]
+    )
+    result$facility_cost <- sum(facility_costs[result$selected])
+    result$worker_cost_total <- sum(result$workers) * worker_cost
+    result$objective <- result$transport_cost + result$facility_cost +
+      result$worker_cost_total
+  }
 
   end_time <- Sys.time()
-
-  if (!is.null(result$error)) {
-    stop(result$error, call. = FALSE)
-  }
 
   # --- Build output ---
   demand_result <- demand
@@ -229,7 +367,10 @@ orce <- function(demand,
     facility_cost = result$facility_cost,
     worker_cost_total = result$worker_cost_total,
     solve_time = as.numeric(difftime(end_time, start_time, units = "secs")),
-    solver_status = result$status
+    solver_status = result$status,
+    tsp_iterations = tsp_iterations,
+    tsp_converged = tsp_converged,
+    peso_tsp = peso_tsp
   )
 
   attr(output, "spopt") <- metadata

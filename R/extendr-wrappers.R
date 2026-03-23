@@ -228,6 +228,20 @@ rust_cflp <- function(cost_matrix, weights, capacities, n_facilities, facility_c
 #' @export
 rust_orce <- function(cost_matrix, weights, facility_costs, worker_cost, worker_capacity, min_workers, max_workers) .Call(wrap__rust_orce, cost_matrix, weights, facility_costs, worker_cost, worker_capacity, min_workers, max_workers)
 
+#' Compute cheapest insertion costs for iterative location-routing
+#'
+#' Given a square distance matrix over (demand + facilities), current facility
+#' assignments, solve a TSP per facility and compute cheapest insertion cost
+#' for every (demand, facility) pair.
+#'
+#' @param full_distance_matrix Square distance matrix (n_demand + n_fac) x (n_demand + n_fac)
+#' @param assignments 1-based facility assignments (length n_demand)
+#' @param n_demand Number of demand points
+#' @param n_fac Number of facilities
+#' @return n_demand x n_fac matrix of cheapest insertion costs
+#' @export
+rust_orce_insertion_costs <- function(full_distance_matrix, assignments, n_demand, n_fac) .Call(wrap__rust_orce_insertion_costs, full_distance_matrix, assignments, n_demand, n_fac)
+
 #' Compute Huff Model probabilities
 #'
 #' Computes probability surface based on distance decay and attractiveness.
