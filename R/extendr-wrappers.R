@@ -224,21 +224,23 @@ rust_cflp <- function(cost_matrix, weights, capacities, n_facilities, facility_c
 #' @param worker_capacity Max demand one worker handles (scalar)
 #' @param min_workers Min workers if facility open (scalar)
 #' @param max_workers Max workers per facility
-#' @return List with selected facilities, assignments, workers, costs
+#' @param initial_solution Optional warm start column solution from a previous solve
+#' @return List with selected facilities, assignments, workers, costs, col_solution
 #' @export
-rust_orce <- function(cost_matrix, weights, facility_costs, worker_cost, worker_capacity, min_workers, max_workers) .Call(wrap__rust_orce, cost_matrix, weights, facility_costs, worker_cost, worker_capacity, min_workers, max_workers)
+rust_orce <- function(cost_matrix, weights, facility_costs, worker_cost, worker_capacity, min_workers, max_workers, initial_solution) .Call(wrap__rust_orce, cost_matrix, weights, facility_costs, worker_cost, worker_capacity, min_workers, max_workers, initial_solution)
 
 #' Compute cheapest insertion costs for iterative location-routing
 #'
-#' Given a square distance matrix over (demand + facilities), current facility
-#' assignments, solve a TSP per facility and compute cheapest insertion cost
-#' for every (demand, facility) pair.
+#' Given a full distance matrix covering demand points and facility depots,
+#' current facility assignments, solve a TSP per facility and compute cheapest
+#' insertion cost for every (demand, facility) pair.
 #'
-#' @param full_distance_matrix Square distance matrix (n_demand + n_fac) x (n_demand + n_fac)
+#' @param full_distance_matrix Square distance matrix (n_demand + n_fac) x (n_demand + n_fac).
+#'   Rows/cols 1:n_demand are demand points, (n_demand+1):(n_demand+n_fac) are facilities.
 #' @param assignments 1-based facility assignments (length n_demand)
 #' @param n_demand Number of demand points
 #' @param n_fac Number of facilities
-#' @return n_demand x n_fac matrix of cheapest insertion costs
+#' @return List with insertion_costs (n_demand x n_fac matrix) and total_tour_distance (scalar)
 #' @export
 rust_orce_insertion_costs <- function(full_distance_matrix, assignments, n_demand, n_fac) .Call(wrap__rust_orce_insertion_costs, full_distance_matrix, assignments, n_demand, n_fac)
 

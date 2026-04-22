@@ -87,6 +87,112 @@ test_that("allocate_zones respects partition_col", {
   expect_true(all(result$zones$.center[3:4] %in% 3:4))
 })
 
+test_that("allocate_zones with sparse distances matches dense", {
+  skip_if_not_installed("sf")
+  skip_if_not(is.loaded("wrap__rust_lscp"), "Rust compilation required")
+
+  zones <- sf::st_as_sf(data.frame(
+    x = c(0, 0.1, 0.2, 100, 100.1, 100.2),
+    y = c(0, 0.1, 0.2, 0, 0.1, 0.2),
+    tid = paste0("T", 1:6)
+  ), coords = c("x", "y"))
+
+  # Compute dense matrix
+  dm <- as.matrix(dist(sf::st_coordinates(zones)))
+
+  # Convert to sparse data frame
+  sparse_df <- data.frame(
+    origin_id = rep(zones$tid, each = 6),
+    destination_id = rep(zones$tid, times = 6),
+    distance = as.vector(dm)
+  )
+
+  r_dense <- allocate_zones(zones, max_distance = 1.0, distances = dm)
+  r_sparse <- allocate_zones(zones, max_distance = 1.0,
+                             distances = sparse_df, id_col = "tid")
+
+  expect_equal(r_sparse$zones$.center, r_dense$zones$.center)
+  expect_equal(r_sparse$zones$.distance, r_dense$zones$.distance,
+               tolerance = 1e-10)
+})
+
+test_that("allocate_zones sparse distances with partitions (intra-only)", {
+  skip_if_not_installed("sf")
+  skip_if_not(is.loaded("wrap__rust_lscp"), "Rust compilation required")
+
+  zones <- sf::st_as_sf(data.frame(
+    x = c(0, 0.1, 5, 5.1),
+    y = c(0, 0.1, 0, 0.1),
+    region = c("A", "A", "B", "B"),
+    tid = paste0("T", 1:4)
+  ), coords = c("x", "y"))
+
+  # Only intra-partition distances (no cross-partition pairs needed)
+  dm <- as.matrix(dist(sf::st_coordinates(zones)))
+  sparse_df <- data.frame(
+    origin_id = character(), destination_id = character(),
+    distance = numeric()
+  )
+  # Partition A: rows 1-2
+  for (i in 1:2) for (j in 1:2) {
+    sparse_df <- rbind(sparse_df, data.frame(
+      origin_id = zones$tid[i], destination_id = zones$tid[j],
+      distance = dm[i, j]
+    ))
+  }
+  # Partition B: rows 3-4
+  for (i in 3:4) for (j in 3:4) {
+    sparse_df <- rbind(sparse_df, data.frame(
+      origin_id = zones$tid[i], destination_id = zones$tid[j],
+      distance = dm[i, j]
+    ))
+  }
+
+  result <- allocate_zones(zones, max_distance = 1.0,
+                           partition_col = "region",
+                           distances = sparse_df, id_col = "tid")
+
+  expect_true(all(result$zones$.center[1:2] %in% 1:2))
+  expect_true(all(result$zones$.center[3:4] %in% 3:4))
+  expect_true(all(result$zones$.distance <= 1.0))
+})
+
+test_that("allocate_zones validates distances input", {
+  skip_if_not_installed("sf")
+
+  zones <- sf::st_as_sf(data.frame(x = 1, y = 1, pop = 10), coords = c("x", "y"))
+
+  # Wrong columns
+  expect_error(
+    allocate_zones(zones, max_distance = 1,
+                   distances = data.frame(a = 1, b = 2, c = 3)),
+    "missing"
+  )
+
+  # Non-numeric distance
+  expect_error(
+    allocate_zones(zones, max_distance = 1,
+                   distances = data.frame(origin_id = "1", destination_id = "1",
+                                          distance = "foo")),
+    "numeric"
+  )
+
+  # Wrong type entirely
+  expect_error(
+    allocate_zones(zones, max_distance = 1, distances = "nope"),
+    "data frame.*matrix"
+  )
+
+  # Bad id_col
+  expect_error(
+    allocate_zones(zones, max_distance = 1,
+                   distances = data.frame(origin_id = 1, destination_id = 1,
+                                          distance = 0),
+                   id_col = "nope"),
+    "not found"
+  )
+})
+
 test_that("allocate_zones validates inputs", {
   skip_if_not_installed("sf")
 

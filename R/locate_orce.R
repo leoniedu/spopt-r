@@ -19,19 +19,29 @@
 #'   maximum number of workers each facility can employ.
 #' @param min_workers Integer scalar. Minimum number of workers at each open
 #'   facility. Default is 1.
-#' @param peso_tsp Numeric scalar. Weight for TSP routing penalty. When
+#' @param weight_tsp Numeric scalar. Weight for TSP routing penalty. When
 #'   greater than 0, an iterative location-routing loop adjusts the cost
 #'   matrix using cheapest insertion costs from per-facility TSP tours, which
 #'   encourages geographically coherent assignments. Default is 0 (no routing
 #'   penalty).
 #' @param max_iter_tsp Integer scalar. Maximum number of location-routing
-#'   iterations when `peso_tsp > 0`. Default is 10.
+#'   iterations when `weight_tsp > 0`. Default is 10.
 #' @param distance_matrix_full Square numeric matrix of dimensions
-#'   `(n_demand + n_fac) x (n_demand + n_fac)`. Required when `peso_tsp > 0`.
+#'   `(n_demand + n_fac) x (n_demand + n_fac)`. Required when `weight_tsp > 0`.
 #'   Rows/columns `1:n_demand` are demand points (same order as `demand`),
 #'   rows/columns `(n_demand+1):(n_demand+n_fac)` are facilities (same order
-#'   as `facilities`). Typically built as
-#'   `distance_matrix(rbind(demand, facilities))`.
+#'   as `facilities`). Should contain raw distances (e.g., km), not costs.
+#' @param kml Numeric scalar. Fuel efficiency in km per litre. Required when
+#'   `weight_tsp > 0`. Used to convert insertion distances to fuel costs so that
+#'   `weight_tsp` is dimensionless.
+#' @param fuel_price Numeric scalar. Cost per litre of fuel. Required when
+#'   `weight_tsp > 0`. Used together with `kml` to convert insertion distances
+#'   to fuel costs: `insertion_fuel = insertion_km / kml * fuel_price`.
+#' @param warm_start Logical. When TRUE (default), the TSP loop passes a
+#'   perturbed version of the previous solution as a MIP starting point.
+#'   The perturbation reassigns demands to their cheapest facility under the
+#'   updated cost matrix, giving the solver a hint aligned with the TSP
+#'   feedback.
 #' @param verbose Logical. Print problem dimensions before solving. Default
 #'   is FALSE.
 #'
@@ -52,10 +62,10 @@
 #'     \item `n_selected`: Number of open facilities
 #'     \item `solve_time`: Solver runtime in seconds
 #'     \item `tsp_iterations`: Number of location-routing iterations (0 when
-#'       `peso_tsp = 0`)
+#'       `weight_tsp = 0`)
 #'     \item `tsp_converged`: Logical. TRUE if assignments stabilized before
 #'       `max_iter_tsp`
-#'     \item `peso_tsp`: The routing penalty weight used
+#'     \item `weight_tsp`: The routing penalty weight used
 #'   }
 #'
 #' @details
@@ -74,16 +84,21 @@
 #' build this from distance and duration data using a helper, e.g.:
 #' `cost = distance_km / kml * fuel_cost + duration_hours * hourly_cost`
 #'
-#' ## Iterative location-routing (`peso_tsp > 0`)
+#' ## Iterative location-routing (`weight_tsp > 0`)
 #'
-#' When `peso_tsp > 0`, the solver iteratively refines assignments by adding
+#' When `weight_tsp > 0`, the solver iteratively refines assignments by adding
 #' a TSP routing penalty to the cost matrix:
 #' 1. Solve ORCE with current costs.
 #' 2. For each opened facility, solve a TSP tour over its assigned demands.
 #' 3. For every (demand, facility) pair, compute the cheapest insertion cost
-#'    of adding that demand into the facility's tour.
-#' 4. Update: `cost_new = cost_original + peso_tsp * insertion_cost`.
-#' 5. Repeat until assignments stabilize or `max_iter_tsp` is reached.
+#'    (in km) of adding that demand into the facility's tour.
+#' 4. Convert to fuel cost: `insertion_fuel = insertion_km / kml * fuel_price`.
+#' 5. Update: `cost_new = cost_original + weight_tsp * insertion_fuel`.
+#' 6. Repeat until assignments stabilize or `max_iter_tsp` is reached.
+#'
+#' Because `insertion_fuel` is in the same monetary units as `cost_matrix`,
+#' `weight_tsp` is dimensionless: a value of 1 means the routing penalty is
+#' weighted equally with the original transport cost.
 #'
 #' This encourages geographically compact clusters without the scalability
 #' issues of embedding route variables directly in the MIP.
@@ -123,7 +138,8 @@
 #'   weight_col = "workload", cost_matrix = cost,
 #'   facility_cost_col = "fixed_cost", worker_cost = 1000,
 #'   worker_capacity = 100, max_workers_col = "max_workers",
-#'   peso_tsp = 1, distance_matrix_full = dm_full
+#'   weight_tsp = 1, distance_matrix_full = dm_full,
+#'   kml = 10, fuel_price = 6
 #' )
 #' }
 #'
@@ -137,9 +153,12 @@ orce <- function(demand,
                  worker_capacity,
                  max_workers_col,
                  min_workers = 1L,
-                 peso_tsp = 0,
+                 weight_tsp = 0,
                  max_iter_tsp = 10L,
                  distance_matrix_full = NULL,
+                 kml = NULL,
+                 fuel_price = NULL,
+                 warm_start = TRUE,
                  verbose = FALSE) {
   # --- Input validation ---
   if (!inherits(demand, "sf")) {
@@ -186,8 +205,8 @@ orce <- function(demand,
   }
 
   # TSP parameters validation
-  if (!is.numeric(peso_tsp) || length(peso_tsp) != 1 || is.na(peso_tsp) || peso_tsp < 0) {
-    stop("`peso_tsp` must be a single non-negative number", call. = FALSE)
+  if (!is.numeric(weight_tsp) || length(weight_tsp) != 1 || is.na(weight_tsp) || weight_tsp < 0) {
+    stop("`weight_tsp` must be a single non-negative number", call. = FALSE)
   }
   max_iter_tsp <- as.integer(max_iter_tsp)
   if (is.na(max_iter_tsp) || max_iter_tsp < 1L) {
@@ -229,12 +248,18 @@ orce <- function(demand,
 
   cost_matrix <- sanitize_cost_matrix(cost_matrix)
 
-  # Validate distance_matrix_full when TSP is active
-  use_tsp <- peso_tsp > 0
+  # Validate distance_matrix_full, kml, fuel_price when TSP is active
+  use_tsp <- weight_tsp > 0
   if (use_tsp) {
     n_total <- n_demand + n_fac
     if (is.null(distance_matrix_full)) {
-      stop("`distance_matrix_full` is required when `peso_tsp > 0`", call. = FALSE)
+      stop("`distance_matrix_full` is required when `weight_tsp > 0`", call. = FALSE)
+    }
+    if (is.null(kml) || !is.numeric(kml) || length(kml) != 1 || kml <= 0) {
+      stop("`kml` must be a single positive number when `weight_tsp > 0`", call. = FALSE)
+    }
+    if (is.null(fuel_price) || !is.numeric(fuel_price) || length(fuel_price) != 1 || fuel_price <= 0) {
+      stop("`fuel_price` must be a single positive number when `weight_tsp > 0`", call. = FALSE)
     }
     if (!is.matrix(distance_matrix_full) ||
         nrow(distance_matrix_full) != n_total ||
@@ -260,7 +285,7 @@ orce <- function(demand,
       n_demand, n_fac, sum(!unopenable), min_workers
     ))
     if (use_tsp) {
-      message(sprintf("  TSP routing penalty: peso_tsp=%.2f, max_iter=%d", peso_tsp, max_iter_tsp))
+      message(sprintf("  TSP routing penalty: weight_tsp=%.2f, max_iter=%d", weight_tsp, max_iter_tsp))
     }
   }
 
@@ -276,7 +301,8 @@ orce <- function(demand,
       worker_cost,
       worker_capacity,
       min_workers,
-      max_workers
+      max_workers,
+      NULL
     )
 
     if (!is.null(result$error)) {
@@ -285,14 +311,20 @@ orce <- function(demand,
 
     tsp_iterations <- 0L
     tsp_converged <- NA
+    augmented_objective <- NULL
+    total_tour_distance <- NULL
   } else {
     # Iterative location-routing loop
     current_cost_matrix <- cost_matrix
     prev_assignments <- NULL
+    prev_objective <- NULL
+    prev_col_solution <- NULL
     tsp_converged <- FALSE
     tsp_iterations <- 0L
 
     for (iter in seq_len(max_iter_tsp)) {
+      iter_start <- Sys.time()
+
       result <- spopt_solvers$rust_orce(
         current_cost_matrix,
         weights,
@@ -300,44 +332,115 @@ orce <- function(demand,
         worker_cost,
         worker_capacity,
         min_workers,
-        max_workers
+        max_workers,
+        if (warm_start) prev_col_solution else NULL
       )
 
       if (!is.null(result$error)) {
         stop(result$error, call. = FALSE)
       }
 
+      mip_time <- as.numeric(difftime(Sys.time(), iter_start, units = "secs"))
       tsp_iterations <- iter
 
-      # Check convergence
-      if (identical(result$assignments, prev_assignments)) {
+      # Compute objective on the original cost matrix (solver objective
+      # includes TSP penalties and is not comparable across iterations)
+      true_objective <- sum(cost_matrix[cbind(seq_len(n_demand), result$assignments)]) +
+        sum(facility_costs[result$selected]) +
+        sum(result$workers) * worker_cost
+
+      # Check convergence: assignments unchanged or objective within tolerance
+      obj_converged <- !is.null(prev_objective) &&
+        abs(true_objective - prev_objective) / (abs(prev_objective) + 1e-10) < 1e-3
+      assign_converged <- identical(result$assignments, prev_assignments)
+      if (assign_converged || obj_converged) {
         tsp_converged <- TRUE
         if (verbose) {
-          message(sprintf("  TSP converged after %d iteration(s)", iter))
+          reason <- if (assign_converged) "assignments stable" else "objective stable"
+          message(sprintf("  TSP iter %d: MIP %.3fs — converged (%s)", iter, mip_time, reason))
         }
         break
       }
       prev_assignments <- result$assignments
+      prev_objective <- true_objective
 
       # Compute insertion costs and update cost matrix for next iteration
       if (iter < max_iter_tsp) {
-        insertion_costs <- rust_orce_insertion_costs(
+        ins_start <- Sys.time()
+        ins_result <- rust_orce_insertion_costs(
           distance_matrix_full,
           result$assignments,
           as.integer(n_demand),
           as.integer(n_fac)
         )
-        current_cost_matrix <- cost_matrix + peso_tsp * insertion_costs
+        ins_time <- as.numeric(difftime(Sys.time(), ins_start, units = "secs"))
+        total_tour_distance <- ins_result$total_tour_distance
+        insertion_fuel <- ins_result$insertion_costs / kml * fuel_price
+        current_cost_matrix <- cost_matrix + weight_tsp * insertion_fuel
+
+        # Perturb the warm start: for each demand point, if another facility
+        # is cheaper under updated costs, flip the assignment. This gives the
+        # solver a starting point aligned with the TSP-adjusted costs.
+        n_perturbed <- 0L
+        if (warm_start) {
+          prev_col_solution <- result$col_solution
+          cur_assign <- result$assignments  # 1-based
+          new_assign <- cur_assign
+          cur_cost <- current_cost_matrix[cbind(seq_len(n_demand), cur_assign)]
+          best_fac <- max.col(-current_cost_matrix)  # 1-based
+          best_cost <- current_cost_matrix[cbind(seq_len(n_demand), best_fac)]
+          flip <- best_cost < cur_cost & best_fac != cur_assign
+          new_assign[flip] <- best_fac[flip]
+          n_perturbed <- sum(flip)
+
+          if (any(flip)) {
+            y_off <- 0L
+            w_off <- n_fac
+            x_off <- 2L * n_fac
+
+            prev_col_solution[(x_off + 1):length(prev_col_solution)] <- 0
+            for (i in seq_len(n_demand)) {
+              prev_col_solution[x_off + (i - 1L) * n_fac + new_assign[i]] <- 1
+            }
+
+            open_facs <- sort(unique(new_assign))
+            prev_col_solution[(y_off + 1):(y_off + n_fac)] <- 0
+            prev_col_solution[y_off + open_facs] <- 1
+
+            assigned_weight <- tapply(weights, new_assign, sum)
+            prev_col_solution[(w_off + 1):(w_off + n_fac)] <- 0
+            for (jj in open_facs) {
+              wj <- ceiling(assigned_weight[as.character(jj)] / worker_capacity)
+              wj <- max(wj, min_workers)
+              wj <- min(wj, max_workers[jj])
+              prev_col_solution[w_off + jj] <- wj
+            }
+          }
+        }
+
+        if (verbose) {
+          message(sprintf("  TSP iter %d: MIP %.3fs, insertion %.3fs, perturbed %d assignments",
+                          iter, mip_time, ins_time, n_perturbed))
+        }
+      } else if (verbose) {
+        message(sprintf("  TSP iter %d: MIP %.3fs (max iterations reached)", iter, mip_time))
       }
     }
 
-    # Recompute true cost decomposition using original cost matrix
+    # Recompute cost decomposition using original cost matrix
     result$transport_cost <- sum(
       cost_matrix[cbind(seq_len(n_demand), result$assignments)]
     )
     result$facility_cost <- sum(facility_costs[result$selected])
     result$worker_cost_total <- sum(result$workers) * worker_cost
     result$objective <- result$transport_cost + result$facility_cost +
+      result$worker_cost_total
+
+    # Augmented objective: includes TSP routing penalty
+    augmented_transport <- sum(
+      current_cost_matrix[cbind(seq_len(n_demand), result$assignments)]
+    )
+    augmented_objective <- augmented_transport + result$facility_cost +
       result$worker_cost_total
   }
 
@@ -370,7 +473,9 @@ orce <- function(demand,
     solver_status = result$status,
     tsp_iterations = tsp_iterations,
     tsp_converged = tsp_converged,
-    peso_tsp = peso_tsp
+    weight_tsp = weight_tsp,
+    augmented_objective = augmented_objective,
+    total_tour_distance = total_tour_distance
   )
 
   attr(output, "spopt") <- metadata

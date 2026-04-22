@@ -2,6 +2,8 @@
 title: "Warehouse location with orce"
 format: html
 editor: visual
+cache: false
+freeze: false
 ---
 
 ```{r setup, include = FALSE}
@@ -178,7 +180,7 @@ orce_pkg_args <- list(
   custo_hora_viagem = 0,
   kml = kml,
   dias_treinamento = 0,
-  peso_tsp = 0,
+  weight_tsp = 0,
   adicional_troca_jurisdicao = 0,
   rel_tol = 0,
   use_cache = FALSE
@@ -267,15 +269,182 @@ comparison |> tt()
 
 The key insight: `cflp()` and `orce()` may select different facilities because `orce()` accounts for workforce costs during optimization, while `cflp()` only considers transport and fixed costs. When worker costs are significant (as they often are), the `orce()` solution is more cost-effective overall.
 
+## Iterative location-routing (`weight_tsp`)
+
+The basic `orce()` minimizes a cost matrix that treats each demand--facility pair independently. This can produce assignments where nearby demand points are split across distant facilities, because the MIP has no visibility into routing.
+
+When `weight_tsp > 0`, `orce()` adds an iterative feedback loop:
+
+1.  Solve the ORCE MIP with the current cost matrix.
+2.  For each opened facility, solve a TSP tour over its assigned demands.
+3.  For every (demand, facility) pair, compute the **cheapest insertion cost** --- the minimum additional distance to insert that demand into the facility's tour.
+4.  Convert insertion distances to fuel cost: $\text{insertion\_fuel} = \text{insertion\_km} / \text{kml} \times \text{fuel\_price}$.
+5.  Update: $\text{cost\_new} = \text{cost\_original} + \text{peso\_tsp} \times \text{insertion\_fuel}$.
+6.  Repeat until assignments stabilize or `max_iter_tsp` is reached.
+
+Because `insertion_fuel` is in the same monetary units as `cost_matrix`, `weight_tsp` is dimensionless: a value of 1 means the routing penalty is weighted equally with the original transport cost.
+
+### Setup
+
+The TSP loop needs a full distance matrix covering all demand points and facilities. We also pass `kml` and `fuel_price` so insertion distances (km) become comparable to the monetary cost matrix.
+
+```{r tsp-setup}
+# Full distance matrix: rows/cols 1:n_demand are demands, (n_demand+1):(n_demand+n_fac) are facilities
+all_coords <- as.data.frame(rbind(
+  st_coordinates(demand), st_coordinates(facilities)
+))
+all_points <- st_as_sf(all_coords, coords = c("X", "Y"))
+dm_full <- distance_matrix(all_points)
+```
+
+### Solving with routing penalty
+
+```{r tsp-solve}
+tsp_args <- list(
+  demand, facilities,
+  weight_col = "workload",
+  cost_matrix = cost_mat,
+  facility_cost_col = "fixed_cost",
+  worker_cost = worker_cost,
+  worker_capacity = worker_capacity,
+  max_workers_col = "max_workers",
+  weight_tsp = 1,
+  distance_matrix_full = dm_full,
+  kml = kml,
+  fuel_price = fuel_cost
+)
+
+# weight_tsp = 1: warm and cold
+orce_tsp_result <- do.call(spopt::orce, tsp_args)
+orce_tsp_meta <- attr(orce_tsp_result, "spopt")
+
+orce_tsp_cold_result <- do.call(spopt::orce, c(tsp_args, warm_start = FALSE))
+orce_tsp_cold_meta <- attr(orce_tsp_cold_result, "spopt")
+
+# weight_tsp = 10: warm and cold
+tsp_args10 <- modifyList(tsp_args, list(weight_tsp = 10))
+
+orce_tsp10_result <- do.call(spopt::orce, tsp_args10)
+orce_tsp10_meta <- attr(orce_tsp10_result, "spopt")
+
+orce_tsp10_cold_result <- do.call(spopt::orce, c(tsp_args10, warm_start = FALSE))
+orce_tsp10_cold_meta <- attr(orce_tsp10_cold_result, "spopt")
+
+# weight_tsp = 100: warm and cold
+tsp_args100 <- modifyList(tsp_args, list(weight_tsp = 100))
+
+orce_tsp100_result <- do.call(spopt::orce, tsp_args100)
+orce_tsp100_meta <- attr(orce_tsp100_result, "spopt")
+
+orce_tsp100_cold_result <- do.call(spopt::orce, c(tsp_args100, warm_start = FALSE))
+orce_tsp100_cold_meta <- attr(orce_tsp100_cold_result, "spopt")
+```
+
+### Comparing with and without TSP
+
+The `Tour cost` column shows the total fuel cost of the TSP tours (all facilities combined). This is the actual routing cost when workers follow optimized tours instead of making independent round trips. The `Total + Tour` column adds this to the base objective.
+
+```{r tsp-comparison}
+# Convert tour distances to fuel cost
+tour_fuel <- function(meta) {
+  if (is.null(meta$total_tour_distance)) return(NA_real_)
+  meta$total_tour_distance / kml * fuel_cost
+}
+
+tsp_comparison <- data.frame(
+  Model = c("orce()", "orce(weight_tsp=1)", "orce(weight_tsp=1, cold)",
+            "orce(weight_tsp=10)", "orce(weight_tsp=10, cold)",
+            "orce(weight_tsp=100)", "orce(weight_tsp=100, cold)"),
+  Facilities = c(orce_meta$n_selected, orce_tsp_meta$n_selected,
+                 orce_tsp_cold_meta$n_selected,
+                 orce_tsp10_meta$n_selected, orce_tsp10_cold_meta$n_selected,
+                 orce_tsp100_meta$n_selected, orce_tsp100_cold_meta$n_selected),
+  Transport = round(c(orce_meta$transport_cost, orce_tsp_meta$transport_cost,
+                       orce_tsp_cold_meta$transport_cost,
+                       orce_tsp10_meta$transport_cost, orce_tsp10_cold_meta$transport_cost,
+                       orce_tsp100_meta$transport_cost, orce_tsp100_cold_meta$transport_cost), 1),
+  Fixed = round(c(orce_meta$facility_cost, orce_tsp_meta$facility_cost,
+                   orce_tsp_cold_meta$facility_cost,
+                   orce_tsp10_meta$facility_cost, orce_tsp10_cold_meta$facility_cost,
+                   orce_tsp100_meta$facility_cost, orce_tsp100_cold_meta$facility_cost), 1),
+  Workers = round(c(orce_meta$worker_cost_total, orce_tsp_meta$worker_cost_total,
+                     orce_tsp_cold_meta$worker_cost_total,
+                     orce_tsp10_meta$worker_cost_total, orce_tsp10_cold_meta$worker_cost_total,
+                     orce_tsp100_meta$worker_cost_total, orce_tsp100_cold_meta$worker_cost_total), 1),
+  `Tour cost` = round(c(NA, tour_fuel(orce_tsp_meta), tour_fuel(orce_tsp_cold_meta),
+                         tour_fuel(orce_tsp10_meta), tour_fuel(orce_tsp10_cold_meta),
+                         tour_fuel(orce_tsp100_meta), tour_fuel(orce_tsp100_cold_meta)), 1),
+  Iterations = c(orce_meta$tsp_iterations, orce_tsp_meta$tsp_iterations,
+                  orce_tsp_cold_meta$tsp_iterations,
+                  orce_tsp10_meta$tsp_iterations, orce_tsp10_cold_meta$tsp_iterations,
+                  orce_tsp100_meta$tsp_iterations, orce_tsp100_cold_meta$tsp_iterations),
+  Converged = c(NA, orce_tsp_meta$tsp_converged, orce_tsp_cold_meta$tsp_converged,
+                orce_tsp10_meta$tsp_converged, orce_tsp10_cold_meta$tsp_converged,
+                orce_tsp100_meta$tsp_converged, orce_tsp100_cold_meta$tsp_converged),
+  `Time (s)` = round(c(orce_meta$solve_time, orce_tsp_meta$solve_time,
+                        orce_tsp_cold_meta$solve_time,
+                        orce_tsp10_meta$solve_time, orce_tsp10_cold_meta$solve_time,
+                        orce_tsp100_meta$solve_time, orce_tsp100_cold_meta$solve_time), 3),
+  check.names = FALSE
+)
+tsp_comparison$Total <- tsp_comparison$Transport + tsp_comparison$Fixed + tsp_comparison$Workers
+tsp_comparison |> tt()
+```
+
+### What changed
+
+The plot below highlights only the demand points whose assignment changed between `orce()` and `orce(weight_tsp = 1)`. For each reassigned point, a red segment shows the old assignment and a blue segment shows the new one. Grey dots are demands that stayed the same; triangles mark open facilities.
+
+```{r tsp-plot, fig.width = 7, fig.height = 7}
+demand_coords <- st_coordinates(demand)
+fac_coords <- st_coordinates(facilities)
+
+assign_base <- orce_result$demand$.facility
+assign_tsp <- orce_tsp_result$demand$.facility
+changed <- which(assign_base != assign_tsp)
+
+n_changed <- length(changed)
+
+plot(demand_coords, pch = 16, cex = 0.5, col = "grey70",
+     xlab = "x (km)", ylab = "y (km)",
+     main = sprintf("Reassigned demands: %d / %d", n_changed, n_demand))
+
+# Segments for changed demands: red = old, blue = new
+for (i in changed) {
+  segments(demand_coords[i, 1], demand_coords[i, 2],
+           fac_coords[assign_base[i], 1], fac_coords[assign_base[i], 2],
+           col = adjustcolor("firebrick", alpha.f = 0.4), lwd = 1.2)
+  segments(demand_coords[i, 1], demand_coords[i, 2],
+           fac_coords[assign_tsp[i], 1], fac_coords[assign_tsp[i], 2],
+           col = adjustcolor("steelblue", alpha.f = 0.5), lwd = 1.2)
+}
+
+# Highlight changed demands
+points(demand_coords[changed, , drop = FALSE], pch = 16, cex = 0.9, col = "black")
+
+# Open facilities (union of both solutions)
+open_all <- sort(union(
+  which(orce_result$facilities$.selected),
+  which(orce_tsp_result$facilities$.selected)
+))
+points(fac_coords[open_all, , drop = FALSE], pch = 17, cex = 1.5, col = "grey30")
+
+legend("topright", legend = c("old (weight_tsp=0)", "new (weight_tsp=1)", "unchanged"),
+       col = c("firebrick", "steelblue", "grey70"),
+       lwd = c(1.5, 1.5, NA), pch = c(NA, NA, 16), pt.cex = c(NA, NA, 0.8),
+       bty = "n", cex = 0.85)
+```
+
 ## When to use which
 
 ```{r when-table, echo = FALSE}
 data.frame(
-  Function = c("`cflp()`", "`orce()`", "`orce::orce()`"),
+  Function = c("`cflp()`", "`orce()`", "`orce(weight_tsp > 0)`", "`orce::orce()`"),
   `Use when` = c(
     "Worker costs are negligible or already folded into fixed costs",
     "Worker allocation matters --- salary is a significant cost component",
-    "You need the full IBGE model (multi-period, daily allowances, TSP)"
+    "Routing quality matters --- nearby demands should stay together",
+    "You need the full IBGE model (multi-period, daily allowances)"
   ),
   check.names = FALSE
 ) |> tt()

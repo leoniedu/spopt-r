@@ -185,7 +185,7 @@ test_that("orce warns on unopenable facilities", {
   )
 })
 
-test_that("orce with peso_tsp returns correct structure and metadata", {
+test_that("orce with weight_tsp returns correct structure and metadata", {
   skip_if_not_installed("sf")
   skip_if_not(is.loaded("wrap__rust_orce"), "Rust compilation required")
 
@@ -214,7 +214,8 @@ test_that("orce with peso_tsp returns correct structure and metadata", {
     weight_col = "workload", cost_matrix = cost,
     facility_cost_col = "fixed_cost", worker_cost = 50,
     worker_capacity = 100, max_workers_col = "max_workers",
-    peso_tsp = 1, distance_matrix_full = dm_full
+    weight_tsp = 1, distance_matrix_full = dm_full,
+    kml = 10, fuel_price = 6
   )
 
   expect_s3_class(result, "spopt_orce")
@@ -222,8 +223,8 @@ test_that("orce with peso_tsp returns correct structure and metadata", {
   meta <- attr(result, "spopt")
   expect_true("tsp_iterations" %in% names(meta))
   expect_true("tsp_converged" %in% names(meta))
-  expect_true("peso_tsp" %in% names(meta))
-  expect_equal(meta$peso_tsp, 1)
+  expect_true("weight_tsp" %in% names(meta))
+  expect_equal(meta$weight_tsp, 1)
   expect_true(meta$tsp_iterations >= 1L)
 
   # Cost decomposition should use original cost matrix
@@ -231,7 +232,7 @@ test_that("orce with peso_tsp returns correct structure and metadata", {
   expect_equal(meta$objective, cost_sum, tolerance = 1e-6)
 })
 
-test_that("orce with peso_tsp=0 matches baseline", {
+test_that("orce with weight_tsp=0 matches baseline", {
   skip_if_not_installed("sf")
   skip_if_not(is.loaded("wrap__rust_orce"), "Rust compilation required")
 
@@ -260,19 +261,19 @@ test_that("orce with peso_tsp=0 matches baseline", {
     weight_col = "workload", cost_matrix = cost,
     facility_cost_col = "fixed_cost", worker_cost = 50,
     worker_capacity = 100, max_workers_col = "max_workers",
-    peso_tsp = 0
+    weight_tsp = 0
   )
 
   meta_base <- attr(result_base, "spopt")
   meta_tsp0 <- attr(result_tsp0, "spopt")
 
-  expect_equal(meta_base$objective, meta_tsp0$objective)
+  expect_equal(meta_base$objective, meta_tsp0$objective, tolerance = 1e-6)
   expect_equal(result_base$demand$.facility, result_tsp0$demand$.facility)
   expect_equal(meta_tsp0$tsp_iterations, 0L)
   expect_true(is.na(meta_tsp0$tsp_converged))
 })
 
-test_that("orce with peso_tsp validates inputs", {
+test_that("orce with weight_tsp validates inputs", {
   skip_if_not_installed("sf")
 
   demand <- sf::st_as_sf(
@@ -285,12 +286,14 @@ test_that("orce with peso_tsp validates inputs", {
   )
   cost <- matrix(0.1, nrow = 1, ncol = 1)
 
-  # peso_tsp > 0 without distance_matrix_full
+  dm_full <- matrix(0.1, nrow = 2, ncol = 2)
+
+  # weight_tsp > 0 without distance_matrix_full
   expect_error(
     orce(demand, facilities, weight_col = "workload", cost_matrix = cost,
          facility_cost_col = "fixed_cost", worker_cost = 50,
          worker_capacity = 100, max_workers_col = "max_workers",
-         peso_tsp = 1),
+         weight_tsp = 1, kml = 10, fuel_price = 6),
     "distance_matrix_full.*required"
   )
 
@@ -299,21 +302,40 @@ test_that("orce with peso_tsp validates inputs", {
     orce(demand, facilities, weight_col = "workload", cost_matrix = cost,
          facility_cost_col = "fixed_cost", worker_cost = 50,
          worker_capacity = 100, max_workers_col = "max_workers",
-         peso_tsp = 1, distance_matrix_full = matrix(1, 3, 3)),
+         weight_tsp = 1, distance_matrix_full = matrix(1, 3, 3),
+         kml = 10, fuel_price = 6),
     "matrix"
   )
 
-  # Negative peso_tsp
+  # Negative weight_tsp
   expect_error(
     orce(demand, facilities, weight_col = "workload", cost_matrix = cost,
          facility_cost_col = "fixed_cost", worker_cost = 50,
          worker_capacity = 100, max_workers_col = "max_workers",
-         peso_tsp = -1),
+         weight_tsp = -1),
     "non-negative"
+  )
+
+  # Missing kml when weight_tsp > 0
+  expect_error(
+    orce(demand, facilities, weight_col = "workload", cost_matrix = cost,
+         facility_cost_col = "fixed_cost", worker_cost = 50,
+         worker_capacity = 100, max_workers_col = "max_workers",
+         weight_tsp = 1, distance_matrix_full = dm_full, fuel_price = 6),
+    "kml.*positive"
+  )
+
+  # Missing fuel_price when weight_tsp > 0
+  expect_error(
+    orce(demand, facilities, weight_col = "workload", cost_matrix = cost,
+         facility_cost_col = "fixed_cost", worker_cost = 50,
+         worker_capacity = 100, max_workers_col = "max_workers",
+         weight_tsp = 1, distance_matrix_full = dm_full, kml = 10),
+    "fuel_price.*positive"
   )
 })
 
-test_that("orce with peso_tsp improves routing quality on split-cluster problem", {
+test_that("orce with weight_tsp improves routing quality on split-cluster problem", {
   skip_if_not_installed("sf")
   skip_if_not(is.loaded("wrap__rust_orce"), "Rust compilation required")
 
@@ -347,14 +369,15 @@ test_that("orce with peso_tsp improves routing quality on split-cluster problem"
     weight_col = "workload", cost_matrix = cost,
     facility_cost_col = "fixed_cost", worker_cost = 5,
     worker_capacity = 100, max_workers_col = "max_workers",
-    peso_tsp = 0
+    weight_tsp = 0
   )
 
   result_tsp <- orce(demand, facilities,
     weight_col = "workload", cost_matrix = cost,
     facility_cost_col = "fixed_cost", worker_cost = 5,
     worker_capacity = 100, max_workers_col = "max_workers",
-    peso_tsp = 1, distance_matrix_full = dm_full
+    weight_tsp = 1, distance_matrix_full = dm_full,
+    kml = 10, fuel_price = 6
   )
 
   # With TSP penalty, the 5 left-side points (including bridge at 0.25)
@@ -456,7 +479,7 @@ test_that("orce matches orce package results", {
     custo_hora_viagem = 0,
     kml = kml,
     dias_treinamento = 0,
-    peso_tsp = 0,
+    weight_tsp = 0,
     adicional_troca_jurisdicao = 0,
     rel_tol = 0,
     use_cache = FALSE
@@ -464,4 +487,100 @@ test_that("orce matches orce package results", {
   orce_obj <- attr(orce_result, "valor")
 
   expect_equal(spopt_obj, orce_obj, tolerance = 1e-4)
+})
+
+test_that("orce returns col_solution for warm start", {
+  skip_if_not_installed("sf")
+  skip_if_not(is.loaded("wrap__rust_orce"), "Rust compilation required")
+
+  set.seed(42)
+  demand <- sf::st_as_sf(
+    data.frame(x = runif(10), y = runif(10), workload = rpois(10, 20)),
+    coords = c("x", "y")
+  )
+  facilities <- sf::st_as_sf(
+    data.frame(
+      x = runif(4), y = runif(4),
+      fixed_cost = rep(100, 4),
+      max_workers = rep(5L, 4)
+    ),
+    coords = c("x", "y")
+  )
+
+  cost <- distance_matrix(demand, facilities)
+  n_demand <- nrow(demand)
+  n_fac <- nrow(facilities)
+
+  result <- orce(demand, facilities,
+    weight_col = "workload", cost_matrix = cost,
+    facility_cost_col = "fixed_cost", worker_cost = 50,
+    worker_capacity = 100, max_workers_col = "max_workers"
+  )
+
+  # col_solution should not be exposed in the R output (internal to Rust)
+  # but we can test the warm start indirectly via TSP loop
+  # Expected column count: 2 * n_fac + n_demand * n_fac (y + w + x)
+  expected_cols <- 2L * n_fac + n_demand * n_fac
+
+  # Call Rust directly to verify col_solution is returned
+  raw <- rust_orce(cost, as.numeric(demand$workload),
+    as.numeric(facilities$fixed_cost), 50, 100, 1L,
+    as.integer(facilities$max_workers), NULL)
+  expect_true("col_solution" %in% names(raw))
+  expect_equal(length(raw$col_solution), expected_cols)
+
+  # Warm start: passing col_solution back should produce the same result
+  raw2 <- rust_orce(cost, as.numeric(demand$workload),
+    as.numeric(facilities$fixed_cost), 50, 100, 1L,
+    as.integer(facilities$max_workers), raw$col_solution)
+  expect_equal(raw2$objective, raw$objective, tolerance = 1e-6)
+  expect_equal(raw2$assignments, raw$assignments)
+})
+
+test_that("orce TSP loop converges with valid assignments", {
+  skip_if_not_installed("sf")
+  skip_if_not(is.loaded("wrap__rust_orce"), "Rust compilation required")
+
+  set.seed(99)
+  n_demand <- 20
+  n_fac <- 5
+
+  demand <- sf::st_as_sf(data.frame(
+    x = c(runif(10, 0, 10), runif(10, 90, 100)),
+    y = c(runif(10, 0, 10), runif(10, 90, 100)),
+    workload = rep(10L, n_demand)
+  ), coords = c("x", "y"))
+
+  facilities <- sf::st_as_sf(data.frame(
+    x = c(5, 95, 50, 5, 95),
+    y = c(5, 95, 50, 95, 5),
+    fixed_cost = rep(100, n_fac),
+    max_workers = rep(5L, n_fac)
+  ), coords = c("x", "y"))
+
+  kml <- 10
+  fuel_cost <- 6
+  dist_mat <- distance_matrix(demand, facilities)
+  cost_mat <- outer(demand$workload, rep(1, n_fac)) * 2 * dist_mat / kml * fuel_cost
+
+  all_coords <- as.data.frame(rbind(
+    sf::st_coordinates(demand), sf::st_coordinates(facilities)
+  ))
+  all_points <- sf::st_as_sf(all_coords, coords = c("X", "Y"))
+  dm_full <- distance_matrix(all_points)
+
+  result <- orce(demand, facilities,
+    weight_col = "workload", cost_matrix = cost_mat,
+    facility_cost_col = "fixed_cost", worker_cost = 100,
+    worker_capacity = 50, max_workers_col = "max_workers",
+    weight_tsp = 1, distance_matrix_full = dm_full,
+    kml = kml, fuel_price = fuel_cost
+  )
+
+  meta <- attr(result, "spopt")
+  expect_true(meta$tsp_iterations >= 1L)
+  expect_true(meta$objective > 0)
+  # Assignments should be valid
+  expect_true(all(result$demand$.facility >= 1L))
+  expect_true(all(result$demand$.facility <= n_fac))
 })

@@ -31,6 +31,7 @@ pub fn solve(
     worker_capacity: f64,
     min_workers: i32,
     max_workers: &[i32],
+    initial_solution: Option<&[f64]>,
 ) -> List {
     let n_demand = cost_matrix.nrows();
     let n_fac = cost_matrix.ncols();
@@ -121,7 +122,12 @@ pub fn solve(
 
     // --- Solve ---
 
-    let solved = pb.optimise(Sense::Minimise).solve();
+    let mut model = pb.optimise(Sense::Minimise);
+    if let Some(init) = initial_solution {
+        // Silently skip warm start if dimensions don't match
+        let _ = model.try_set_solution(Some(init), None, None, None);
+    }
+    let solved = model.solve();
     let status = solved.status();
     let status_str = format!("{:?}", status);
 
@@ -200,6 +206,7 @@ pub fn solve(
             }
 
             let n_selected = selected.len() as i32;
+            let col_solution: Vec<f64> = sol.columns().to_vec();
 
             list!(
                 selected = selected,
@@ -212,6 +219,7 @@ pub fn solve(
                 facility_cost = facility_cost_total,
                 worker_cost_total = worker_cost_total,
                 utilizations = utilizations,
+                col_solution = col_solution,
                 status = status_str
             )
         }

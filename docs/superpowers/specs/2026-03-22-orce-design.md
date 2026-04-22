@@ -228,7 +228,7 @@ Before calling Rust:
 | Fixed facility cost | `Σ custo_fixo[j] * y[j]` | `Σ fixed_cost[j] * y[j]` | Equivalent |
 | Worker salary | `remuneracao * Σ w[j]` (scalar) | `worker_cost * Σ w[j]` (scalar) | Equivalent |
 | Per-facility training | `Σ custo_treinamento[j] * w[j]` | — | Dropped; fold into `facility_cost_col` |
-| TSP routing penalty | `(fuel * peso_tsp / kml) * Σ dist * route` | — | Dropped by design |
+| TSP routing penalty | `(fuel * weight_tsp / kml) * Σ dist * route` | — | Dropped by design |
 
 ### Constraints
 
@@ -247,7 +247,7 @@ Before calling Rust:
 - Multi-period capacity constraints (orce iterates over periods `t = 1:p`)
 - Daily allowance (diária) calculation and constraints
 - Per-facility training cost (`custo_treinamento_por_entrevistador[j]`)
-- TSP routing for geographic coherence (`peso_tsp`, `route[i,k,j]`, MTZ)
+- TSP routing for geographic coherence (`weight_tsp`, `route[i,k,j]`, MTZ)
 - Constraint application (`orce_aplicar_restricoes()`: block/force assignments)
 - `n_entrevistadores_tipo` choice between continuous/integer workers (always integer here)
 

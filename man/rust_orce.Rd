@@ -11,7 +11,8 @@ rust_orce(
   worker_cost,
   worker_capacity,
   min_workers,
-  max_workers
+  max_workers,
+  initial_solution
 )
 }
 \arguments{
@@ -28,9 +29,11 @@ rust_orce(
 \item{min_workers}{Min workers if facility open (scalar)}
 
 \item{max_workers}{Max workers per facility}
+
+\item{initial_solution}{Optional warm start column solution from a previous solve}
 }
 \value{
-List with selected facilities, assignments, workers, costs
+List with selected facilities, assignments, workers, costs, col_solution
 }
 \description{
 Minimize transport + facility + worker costs with integer worker variables.

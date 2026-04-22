@@ -11,7 +11,8 @@ allocate_zones(
   weight_col = NULL,
   capacity = NULL,
   partition_col = NULL,
-  cost_matrix = NULL,
+  distances = NULL,
+  id_col = NULL,
   distance_metric = "euclidean",
   sequence = FALSE,
   verbose = FALSE
@@ -45,10 +46,22 @@ this is the maximum number of zones per center.}
 \item{partition_col}{Optional character. Column name in \code{zones} that defines
 independent partitions. Each partition is solved separately.}
 
-\item{cost_matrix}{Optional. Pre-computed square distance matrix (n x n).}
+\item{distances}{Optional. Pre-computed distances, either:
+\itemize{
+\item A \strong{data frame} (sparse) with columns \code{origin_id}, \code{destination_id},
+and \code{distance}. Missing pairs are treated as \code{Inf}. When partitions are
+used, only intra-partition pairs are needed — this is the memory-efficient
+path. Use \code{id_col} to map IDs to zones; if \code{NULL}, 1-based row indices
+are used.
+\item A \strong{matrix} (dense, n x n). Subsetted per partition as before.
+}}
 
-\item{distance_metric}{Distance metric: "euclidean" (default) or "manhattan".
-Ignored if \code{cost_matrix} is provided.}
+\item{id_col}{Optional character. Column name in \code{zones} whose values match
+\code{origin_id} / \code{destination_id} in \code{distances}. If \code{NULL} (default),
+integer row indices are used as identifiers.}
+
+\item{distance_metric}{Distance metric: \code{"euclidean"} (default) or
+\code{"manhattan"}. Only used when \code{distances} is \code{NULL}.}
 
 \item{sequence}{Logical. If TRUE, order zones and tracts via TSP for
 geographic sequencing. Adds \code{.zone_order} (visit order of zones) and
@@ -112,6 +125,16 @@ allocate_zones(zones, max_distance = 1, method = "p_median", weight_col = "pop")
 
 # Capacitated: max 2 zones per center
 allocate_zones(zones, max_distance = 1, method = "cflp", capacity = 2)
+
+# With pre-computed sparse distances (e.g. from surveyzones or OSRM)
+zones$tract_id <- paste0("T", seq_len(nrow(zones)))
+sparse_dist <- data.frame(
+  origin_id = c("T1", "T1", "T2", "T2", "T3", "T3"),
+  destination_id = c("T2", "T3", "T1", "T3", "T1", "T2"),
+  distance = c(0.14, 0.28, 0.14, 0.14, 0.28, 0.14)
+)
+allocate_zones(zones, max_distance = 1, distances = sparse_dist,
+               id_col = "tract_id")
 }
 
 }

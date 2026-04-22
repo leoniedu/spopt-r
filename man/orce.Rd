@@ -14,9 +14,12 @@ orce(
   worker_capacity,
   max_workers_col,
   min_workers = 1L,
-  peso_tsp = 0,
+  weight_tsp = 0,
   max_iter_tsp = 10L,
   distance_matrix_full = NULL,
+  kml = NULL,
+  fuel_price = NULL,
+  warm_start = TRUE,
   verbose = FALSE
 )
 }
@@ -45,21 +48,34 @@ maximum number of workers each facility can employ.}
 \item{min_workers}{Integer scalar. Minimum number of workers at each open
 facility. Default is 1.}
 
-\item{peso_tsp}{Numeric scalar. Weight for TSP routing penalty. When
+\item{weight_tsp}{Numeric scalar. Weight for TSP routing penalty. When
 greater than 0, an iterative location-routing loop adjusts the cost
 matrix using cheapest insertion costs from per-facility TSP tours, which
 encourages geographically coherent assignments. Default is 0 (no routing
 penalty).}
 
 \item{max_iter_tsp}{Integer scalar. Maximum number of location-routing
-iterations when \code{peso_tsp > 0}. Default is 10.}
+iterations when \code{weight_tsp > 0}. Default is 10.}
 
 \item{distance_matrix_full}{Square numeric matrix of dimensions
-\verb{(n_demand + n_fac) x (n_demand + n_fac)}. Required when \code{peso_tsp > 0}.
+\verb{(n_demand + n_fac) x (n_demand + n_fac)}. Required when \code{weight_tsp > 0}.
 Rows/columns \code{1:n_demand} are demand points (same order as \code{demand}),
 rows/columns \code{(n_demand+1):(n_demand+n_fac)} are facilities (same order
-as \code{facilities}). Typically built as
-\code{distance_matrix(rbind(demand, facilities))}.}
+as \code{facilities}). Should contain raw distances (e.g., km), not costs.}
+
+\item{kml}{Numeric scalar. Fuel efficiency in km per litre. Required when
+\code{weight_tsp > 0}. Used to convert insertion distances to fuel costs so that
+\code{weight_tsp} is dimensionless.}
+
+\item{fuel_price}{Numeric scalar. Cost per litre of fuel. Required when
+\code{weight_tsp > 0}. Used together with \code{kml} to convert insertion distances
+to fuel costs: \code{insertion_fuel = insertion_km / kml * fuel_price}.}
+
+\item{warm_start}{Logical. When TRUE (default), the TSP loop passes a
+perturbed version of the previous solution as a MIP starting point.
+The perturbation reassigns demands to their cheapest facility under the
+updated cost matrix, giving the solver a hint aligned with the TSP
+feedback.}
 
 \item{verbose}{Logical. Print problem dimensions before solving. Default
 is FALSE.}
@@ -82,10 +98,10 @@ Metadata is stored in the "spopt" attribute, including:
 \item \code{n_selected}: Number of open facilities
 \item \code{solve_time}: Solver runtime in seconds
 \item \code{tsp_iterations}: Number of location-routing iterations (0 when
-\code{peso_tsp = 0})
+\code{weight_tsp = 0})
 \item \code{tsp_converged}: Logical. TRUE if assignments stabilized before
 \code{max_iter_tsp}
-\item \code{peso_tsp}: The routing penalty weight used
+\item \code{weight_tsp}: The routing penalty weight used
 }
 }
 \description{
@@ -108,18 +124,23 @@ the package vignette for full details.
 The \code{cost_matrix} should contain pre-computed transport costs. Users can
 build this from distance and duration data using a helper, e.g.:
 \code{cost = distance_km / kml * fuel_cost + duration_hours * hourly_cost}
-\subsection{Iterative location-routing (\code{peso_tsp > 0})}{
+\subsection{Iterative location-routing (\code{weight_tsp > 0})}{
 
-When \code{peso_tsp > 0}, the solver iteratively refines assignments by adding
+When \code{weight_tsp > 0}, the solver iteratively refines assignments by adding
 a TSP routing penalty to the cost matrix:
 \enumerate{
 \item Solve ORCE with current costs.
 \item For each opened facility, solve a TSP tour over its assigned demands.
 \item For every (demand, facility) pair, compute the cheapest insertion cost
-of adding that demand into the facility's tour.
-\item Update: \code{cost_new = cost_original + peso_tsp * insertion_cost}.
+(in km) of adding that demand into the facility's tour.
+\item Convert to fuel cost: \code{insertion_fuel = insertion_km / kml * fuel_price}.
+\item Update: \code{cost_new = cost_original + weight_tsp * insertion_fuel}.
 \item Repeat until assignments stabilize or \code{max_iter_tsp} is reached.
 }
+
+Because \code{insertion_fuel} is in the same monetary units as \code{cost_matrix},
+\code{weight_tsp} is dimensionless: a value of 1 means the routing penalty is
+weighted equally with the original transport cost.
 
 This encourages geographically compact clusters without the scalability
 issues of embedding route variables directly in the MIP.
@@ -156,7 +177,8 @@ result2 <- orce(demand, facilities,
   weight_col = "workload", cost_matrix = cost,
   facility_cost_col = "fixed_cost", worker_cost = 1000,
   worker_capacity = 100, max_workers_col = "max_workers",
-  peso_tsp = 1, distance_matrix_full = dm_full
+  weight_tsp = 1, distance_matrix_full = dm_full,
+  kml = 10, fuel_price = 6
 )
 }
 

@@ -1,6 +1,25 @@
 # Internal utility functions for spopt
 # These are not exported and not documented
 
+# Convert sparse distance data frame to dense cost matrix
+# sparse_dist: data frame with origin_id, destination_id, distance columns
+# ids: character/numeric vector of identifiers defining row/column order
+# Returns n x n matrix with Inf for missing pairs and 0 on diagonal
+sparse_to_dense <- function(sparse_dist, ids) {
+  n <- length(ids)
+  ids_chr <- as.character(ids)
+  mat <- matrix(Inf, nrow = n, ncol = n, dimnames = list(ids_chr, ids_chr))
+  diag(mat) <- 0
+
+  origin <- as.character(sparse_dist$origin_id)
+  destination <- as.character(sparse_dist$destination_id)
+  keep <- origin %in% ids_chr & destination %in% ids_chr
+  if (any(keep)) {
+    mat[cbind(origin[keep], destination[keep])] <- sparse_dist$distance[keep]
+  }
+  mat
+}
+
 # Sanitize cost matrix: replace NA and Inf with large finite values
 # Returns the cleaned matrix (with warnings if values were replaced)
 sanitize_cost_matrix <- function(cost_matrix) {
@@ -11,6 +30,7 @@ sanitize_cost_matrix <- function(cost_matrix) {
       n_na
     ))
     max_cost <- max(cost_matrix, na.rm = TRUE)
+    if (!is.finite(max_cost) || max_cost <= 0) max_cost <- 1
     cost_matrix[is.na(cost_matrix)] <- max_cost * 100
   }
   n_inf <- sum(is.infinite(cost_matrix))
@@ -20,6 +40,7 @@ sanitize_cost_matrix <- function(cost_matrix) {
       n_inf
     ))
     finite_max <- max(cost_matrix[is.finite(cost_matrix)])
+    if (!is.finite(finite_max) || finite_max <= 0) finite_max <- 1
     cost_matrix[is.infinite(cost_matrix)] <- finite_max * 100
   }
   cost_matrix
@@ -149,65 +170,6 @@ validate_regionalization_data <- function(data, check_cols, call_name = "regiona
   }
 
   list(data = data, removed_idx = removed_idx)
-}
-
-# Resolve fixed_col to integer row indices for facility location solvers.
-# fixed_col: column name in facilities containing TRUE/FALSE (or "required"/"candidate").
-# Returns NULL if fixed_col is NULL, or an integer vector of 1-based row indices.
-resolve_fixed_facilities <- function(fixed_col, facilities, n_facilities) {
-  if (is.null(fixed_col)) return(NULL)
-
-  if (!is.character(fixed_col) || length(fixed_col) != 1L) {
-    stop("`fixed_col` must be a single column name", call. = FALSE)
-  }
-  if (!fixed_col %in% names(facilities)) {
-    stop(sprintf("Column '%s' not found in `facilities`", fixed_col), call. = FALSE)
-  }
-
-  vals <- facilities[[fixed_col]]
-
-  # Support logical columns directly
-  if (is.logical(vals)) {
-    if (anyNA(vals)) {
-      stop(sprintf("`fixed_col` column '%s' must not contain NA values", fixed_col),
-           call. = FALSE)
-    }
-    fixed_indices <- which(vals)
-  } else if (is.character(vals) || is.factor(vals)) {
-    # Support "required"/"candidate" pattern
-    vals <- tolower(as.character(vals))
-    allowed <- c("required", "candidate")
-    bad <- setdiff(unique(vals[!is.na(vals)]), allowed)
-    if (length(bad) > 0) {
-      stop(sprintf(
-        "`fixed_col` column '%s' must contain TRUE/FALSE or 'required'/'candidate', found: %s",
-        fixed_col, paste(bad, collapse = ", ")
-      ), call. = FALSE)
-    }
-    if (anyNA(vals)) {
-      stop(sprintf("`fixed_col` column '%s' must not contain NA values", fixed_col),
-           call. = FALSE)
-    }
-    fixed_indices <- which(vals == "required")
-  } else {
-    stop(sprintf(
-      "`fixed_col` column '%s' must be logical or character ('required'/'candidate')",
-      fixed_col
-    ), call. = FALSE)
-  }
-
-  if (length(fixed_indices) == 0L) {
-    return(NULL)  # no fixed facilities, same as not specifying
-  }
-
-  if (length(fixed_indices) > n_facilities) {
-    stop(sprintf(
-      "more fixed facilities (%d) than requested n_facilities (%d)",
-      length(fixed_indices), n_facilities
-    ), call. = FALSE)
-  }
-
-  as.integer(fixed_indices)
 }
 
 # Attach spopt metadata to result

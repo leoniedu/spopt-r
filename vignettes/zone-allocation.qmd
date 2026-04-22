@@ -60,15 +60,15 @@ nrow(zones_sf)
 
 ```{r solve}
 result_near <- allocate_zones(zones_sf, max_distance = 5,
-                              cost_matrix = dm, verbose = TRUE)
+                              distances = dm, verbose = TRUE)
 
 result_opt <- allocate_zones(zones_sf, max_distance = 5, method = "p_median",
                              weight_col = "population",
-                             cost_matrix = dm, verbose = TRUE)
+                             distances = dm, verbose = TRUE)
 
 result_cap <- allocate_zones(zones_sf, max_distance = 5, method = "cflp",
                              capacity = 3,
-                             cost_matrix = dm, verbose = TRUE)
+                             distances = dm, verbose = TRUE)
 ```
 
 ```{r compare}
@@ -134,7 +134,7 @@ When `sequence = TRUE`, zones and tracts are ordered via TSP for geographic rout
 ```{r sequence}
 result_seq <- allocate_zones(zones_sf, max_distance = 5, method = "p_median",
                              weight_col = "population",
-                             cost_matrix = dm, sequence = TRUE, verbose = TRUE)
+                             distances = dm, sequence = TRUE, verbose = TRUE)
 
 # Show first 15 tracts in visit order
 st_drop_geometry(result_seq$zones) |>
@@ -176,7 +176,7 @@ zones_sf$region <- ifelse(coords[, 1] < median(coords[, 1]), "west", "east")
 
 result_part <- allocate_zones(zones_sf, max_distance = 5, method = "p_median",
                               partition_col = "region",
-                              cost_matrix = dm, verbose = TRUE)
+                              distances = dm, verbose = TRUE)
 
 data.frame(
   Approach = c("Partitioned", "Unpartitioned"),

@@ -7,7 +7,8 @@
 rust_orce_insertion_costs(full_distance_matrix, assignments, n_demand, n_fac)
 }
 \arguments{
-\item{full_distance_matrix}{Square distance matrix (n_demand + n_fac) x (n_demand + n_fac)}
+\item{full_distance_matrix}{Square distance matrix (n_demand + n_fac) x (n_demand + n_fac).
+Rows/cols 1:n_demand are demand points, (n_demand+1):(n_demand+n_fac) are facilities.}
 
 \item{assignments}{1-based facility assignments (length n_demand)}
 
@@ -16,10 +17,10 @@ rust_orce_insertion_costs(full_distance_matrix, assignments, n_demand, n_fac)
 \item{n_fac}{Number of facilities}
 }
 \value{
-n_demand x n_fac matrix of cheapest insertion costs
+List with insertion_costs (n_demand x n_fac matrix) and total_tour_distance (scalar)
 }
 \description{
-Given a square distance matrix over (demand + facilities), current facility
-assignments, solve a TSP per facility and compute cheapest insertion cost
-for every (demand, facility) pair.
+Given a full distance matrix covering demand points and facility depots,
+current facility assignments, solve a TSP per facility and compute cheapest
+insertion cost for every (demand, facility) pair.
 }

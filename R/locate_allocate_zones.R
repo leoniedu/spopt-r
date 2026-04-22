@@ -120,9 +120,18 @@ sequence_zones <- function(zones_result, partition_data, partition_col) {
 #'   this is the maximum number of zones per center.
 #' @param partition_col Optional character. Column name in `zones` that defines
 #'   independent partitions. Each partition is solved separately.
-#' @param cost_matrix Optional. Pre-computed square distance matrix (n x n).
-#' @param distance_metric Distance metric: "euclidean" (default) or "manhattan".
-#'   Ignored if `cost_matrix` is provided.
+#' @param distances Optional. Pre-computed distances, either:
+#'   - A **data frame** (sparse) with columns `origin_id`, `destination_id`,
+#'     and `distance`. Missing pairs are treated as `Inf`. When partitions are
+#'     used, only intra-partition pairs are needed — this is the memory-efficient
+#'     path. Use `id_col` to map IDs to zones; if `NULL`, 1-based row indices
+#'     are used.
+#'   - A **matrix** (dense, n x n). Subsetted per partition as before.
+#' @param id_col Optional character. Column name in `zones` whose values match
+#'   `origin_id` / `destination_id` in `distances`. If `NULL` (default),
+#'   integer row indices are used as identifiers.
+#' @param distance_metric Distance metric: `"euclidean"` (default) or
+#'   `"manhattan"`. Only used when `distances` is `NULL`.
 #' @param sequence Logical. If TRUE, order zones and tracts via TSP for
 #'   geographic sequencing. Adds `.zone_order` (visit order of zones) and
 #'   `.tract_order` (visit order of tracts within each zone) columns.
@@ -177,6 +186,16 @@ sequence_zones <- function(zones_result, partition_data, partition_col) {
 #'
 #' # Capacitated: max 2 zones per center
 #' allocate_zones(zones, max_distance = 1, method = "cflp", capacity = 2)
+#'
+#' # With pre-computed sparse distances (e.g. from surveyzones or OSRM)
+#' zones$tract_id <- paste0("T", seq_len(nrow(zones)))
+#' sparse_dist <- data.frame(
+#'   origin_id = c("T1", "T1", "T2", "T2", "T3", "T3"),
+#'   destination_id = c("T2", "T3", "T1", "T3", "T1", "T2"),
+#'   distance = c(0.14, 0.28, 0.14, 0.14, 0.28, 0.14)
+#' )
+#' allocate_zones(zones, max_distance = 1, distances = sparse_dist,
+#'                id_col = "tract_id")
 #' }
 #'
 #' @seealso [p_median()] and [cflp()] for standard facility location with
@@ -189,7 +208,8 @@ allocate_zones <- function(zones,
                            weight_col = NULL,
                            capacity = NULL,
                            partition_col = NULL,
-                           cost_matrix = NULL,
+                           distances = NULL,
+                           id_col = NULL,
                            distance_metric = "euclidean",
                            sequence = FALSE,
                            verbose = FALSE) {
@@ -216,6 +236,38 @@ allocate_zones <- function(zones,
     if (!partition_col %in% names(zones)) {
       stop(paste0("Partition column '", partition_col, "' not found in zones"),
            call. = FALSE)
+    }
+  }
+
+  # Validate distances: sparse data frame or dense matrix
+  dist_mode <- "compute"  # "compute", "sparse", or "dense"
+  if (!is.null(distances)) {
+    if (is.data.frame(distances)) {
+      required_cols <- c("origin_id", "destination_id", "distance")
+      missing_cols <- setdiff(required_cols, names(distances))
+      if (length(missing_cols) > 0) {
+        stop(sprintf(
+          "`distances` data frame must have columns: %s (missing: %s)",
+          paste(required_cols, collapse = ", "),
+          paste(missing_cols, collapse = ", ")
+        ), call. = FALSE)
+      }
+      if (!is.numeric(distances$distance)) {
+        stop("`distances$distance` must be numeric", call. = FALSE)
+      }
+      dist_mode <- "sparse"
+    } else if (is.matrix(distances)) {
+      dist_mode <- "dense"
+      full_cm <- sanitize_cost_matrix(distances)
+    } else {
+      stop("`distances` must be a data frame (sparse) or a matrix (dense)",
+           call. = FALSE)
+    }
+  }
+
+  if (!is.null(id_col)) {
+    if (!id_col %in% names(zones)) {
+      stop(sprintf("Column '%s' (id_col) not found in zones", id_col), call. = FALSE)
     }
   }
 
@@ -251,11 +303,13 @@ allocate_zones <- function(zones,
   total_n_split <- 0L
   component_counter <- 0L
 
-  # --- Compute full cost matrix if provided ---
-  if (!is.null(cost_matrix)) {
-    full_cm <- sanitize_cost_matrix(cost_matrix)
-  } else {
-    full_cm <- NULL
+  # --- Resolve ID vector for sparse distances ---
+  if (dist_mode == "sparse") {
+    if (!is.null(id_col)) {
+      id_vector <- as.character(zones[[id_col]])
+    } else {
+      id_vector <- as.character(seq_len(n))
+    }
   }
 
   # --- Determine partitions ---
@@ -273,12 +327,16 @@ allocate_zones <- function(zones,
       idx <- seq_len(n)
     }
 
-    # Compute or subset cost matrix
-    if (is.null(full_cm)) {
+    # Compute or densify cost matrix for this partition
+    if (dist_mode == "sparse") {
+      partition_ids <- id_vector[idx]
+      cm <- sparse_to_dense(distances, partition_ids)
+      cm <- sanitize_cost_matrix(cm)
+    } else if (dist_mode == "dense") {
+      cm <- full_cm[idx, idx, drop = FALSE]
+    } else {
       cm <- distance_matrix(zones[idx, ], zones[idx, ], type = distance_metric)
       cm <- sanitize_cost_matrix(cm)
-    } else {
-      cm <- full_cm[idx, idx, drop = FALSE]
     }
 
     weights_part <- all_weights[idx]

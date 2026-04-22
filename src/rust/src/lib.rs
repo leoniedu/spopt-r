@@ -495,7 +495,8 @@ fn rust_cflp(
 /// @param worker_capacity Max demand one worker handles (scalar)
 /// @param min_workers Min workers if facility open (scalar)
 /// @param max_workers Max workers per facility
-/// @return List with selected facilities, assignments, workers, costs
+/// @param initial_solution Optional warm start column solution from a previous solve
+/// @return List with selected facilities, assignments, workers, costs, col_solution
 /// @export
 #[extendr]
 fn rust_orce(
@@ -506,6 +507,7 @@ fn rust_orce(
     worker_capacity: f64,
     min_workers: i32,
     max_workers: Vec<i32>,
+    initial_solution: Nullable<Vec<f64>>,
 ) -> List {
     locate::orce::solve(
         cost_matrix,
@@ -515,6 +517,7 @@ fn rust_orce(
         worker_capacity,
         min_workers,
         &max_workers,
+        initial_solution.into_option().as_deref(),
     )
 }
 
@@ -546,15 +549,16 @@ fn rust_huff(
 
 /// Compute cheapest insertion costs for iterative location-routing
 ///
-/// Given a square distance matrix over (demand + facilities), current facility
-/// assignments, solve a TSP per facility and compute cheapest insertion cost
-/// for every (demand, facility) pair.
+/// Given a full distance matrix covering demand points and facility depots,
+/// current facility assignments, solve a TSP per facility and compute cheapest
+/// insertion cost for every (demand, facility) pair.
 ///
-/// @param full_distance_matrix Square distance matrix (n_demand + n_fac) x (n_demand + n_fac)
+/// @param full_distance_matrix Square distance matrix (n_demand + n_fac) x (n_demand + n_fac).
+///   Rows/cols 1:n_demand are demand points, (n_demand+1):(n_demand+n_fac) are facilities.
 /// @param assignments 1-based facility assignments (length n_demand)
 /// @param n_demand Number of demand points
 /// @param n_fac Number of facilities
-/// @return n_demand x n_fac matrix of cheapest insertion costs
+/// @return List with insertion_costs (n_demand x n_fac matrix) and total_tour_distance (scalar)
 /// @export
 #[extendr]
 fn rust_orce_insertion_costs(
@@ -562,17 +566,15 @@ fn rust_orce_insertion_costs(
     assignments: Vec<i32>,
     n_demand: i32,
     n_fac: i32,
-) -> RMatrix<f64> {
+) -> List {
     let nd = n_demand as usize;
     let nf = n_fac as usize;
-    let n_total = nd + nf;
+    let nt = nd + nf;
 
-    let nrows = full_distance_matrix.nrows();
-    let ncols = full_distance_matrix.ncols();
-    if nrows != n_total || ncols != n_total {
+    if full_distance_matrix.nrows() != nt || full_distance_matrix.ncols() != nt {
         extendr_api::throw_r_error(format!(
-            "full_distance_matrix must be {} x {}, got {} x {}",
-            n_total, n_total, nrows, ncols
+            "full_distance_matrix must be {} x {} (n_demand + n_fac), got {} x {}",
+            nt, nt, full_distance_matrix.nrows(), full_distance_matrix.ncols()
         ));
     }
     if assignments.len() != nd {
@@ -585,10 +587,10 @@ fn rust_orce_insertion_costs(
 
     // Convert column-major R matrix to row-major Vec<Vec<f64>>
     let flat = full_distance_matrix.data();
-    let mut matrix = vec![vec![0.0; n_total]; n_total];
-    for i in 0..n_total {
-        for j in 0..n_total {
-            matrix[i][j] = flat[j * n_total + i];
+    let mut matrix = vec![vec![0.0; nt]; nt];
+    for i in 0..nt {
+        for j in 0..nt {
+            matrix[i][j] = flat[j * nt + i];
         }
     }
 
@@ -606,7 +608,7 @@ fn rust_orce_insertion_costs(
         })
         .collect();
 
-    let costs = route::insertion::compute_insertion_costs(&matrix, &assignments_0, nd, nf);
+    let (costs, total_tour_cost) = route::insertion::compute_insertion_costs(&matrix, &assignments_0, nd, nf);
 
     // Build column-major R matrix (nd rows x nf cols)
     let mut result_matrix = RMatrix::new(nd, nf);
@@ -616,7 +618,7 @@ fn rust_orce_insertion_costs(
         }
     }
 
-    result_matrix
+    list!(insertion_costs = result_matrix, total_tour_distance = total_tour_cost)
 }
 
 /// Solve Traveling Salesman Problem (TSP)
